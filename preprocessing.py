@@ -224,7 +224,7 @@ def load_graph(file_path):
     for i, row1 in df_node_items.iterrows():
         for j, row2 in df_node_items.iterrows():
             if row1['SensorDMA'] > row2['SensorDMA']:
-                g.add_edge(row1['SensorDMA'], row2['SensorDMA'], weight=calc_edge_weight('euclidean', row1, row2))
+                g.add_edge(str(int(row1['SensorDMA'])), str(int(row2['SensorDMA'])), weight=calc_edge_weight('euclidean', row1, row2))
             
     return g
 

@@ -35,7 +35,7 @@ class WaterFlowDataSet(Dataset):
         data = Data(
             x = x_masked,
             y = x,       
-            mask = mask,            
+            mask = (mask == 0),            
             edge_index = self.edge_index,
             edge_weight = self.edge_weight
         )
@@ -45,10 +45,12 @@ class WaterFlowDataSet(Dataset):
 
         mask = torch.ones_like(x)
 
+        # Randomly mask 1-3 nodes
         num_nodes_to_mask = torch.randint(1, 4, (1,)).item()
         node_indices = torch.randperm(self.N)[:num_nodes_to_mask]
         mask[node_indices, :] = 0.0  
 
+        # Mask future nodes for forecasting
         if self.forecast_window > 0:
             mask[:, -self.forecast_window:] = 0.0
 

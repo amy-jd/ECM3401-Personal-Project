@@ -8,12 +8,18 @@ class GNN(torch.nn.Module):
     def __init__ (self, input_channels, hidden_channels, output_channels):
         super().__init__()
         self.conv1 = GCNConv(input_channels, hidden_channels)
-        self.conv2 = GCNConv(hidden_channels, output_channels)
+        self.conv2 = GCNConv(hidden_channels, hidden_channels)
+        self.conv3 = GCNConv(hidden_channels, output_channels)
  
 
     def forward(self, x, edge_index):
         x = self.conv1(x, edge_index)
-        x = torch.log_softmax(x, dim=1 )
+        x = torch.relu(x)
+        x = self.conv2(x, edge_index)
+        x = torch.relu(x)
+        x = self.conv3(x, edge_index)
+        x = torch.relu(x)
+        #x = torch.log_softmax(x, dim=1 )
         return x
     
    
