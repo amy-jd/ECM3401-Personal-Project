@@ -118,8 +118,10 @@ def create_samples(df_flowdata):
                 for idx, col in enumerate(SENSOR_COLS)
             }
 
-            windows_df.loc[len(windows_df)] = row
-            strata_series.loc[len(windows_df)] = strata_values[i]
+            index = len(windows_df)
+
+            windows_df.loc[index] = row
+            strata_series.loc[index] = strata_values[i]
 
             i += TOTAL_WINDOW
 
@@ -182,7 +184,7 @@ def preprocess_flowdata(path):
     rows_to_remove = pd.Series(False, index=df_flowdata.index) 
     for col in df_flowdata.columns:
         rows_to_remove |= find_long_nan_sections(df_flowdata[col], MAX_GAP)
-        rows_to_remove |= find_outlier_values(df_flowdata[col])
+        #rows_to_remove |= find_outlier_values(df_flowdata[col])
     df_flowdata = df_flowdata[rows_to_remove == False]
 
     # Imputing short ranges of missing values
