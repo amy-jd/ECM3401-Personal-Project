@@ -7,15 +7,12 @@ from scipy.spatial.distance import euclidean
 import torch
 from sklearn.model_selection import train_test_split
 from eda import plotGraph
-
+import hp
 
 
 
 pd.set_option('display.max_rows', 500)
 
-INPUT_WINDOW = 4
-FORECAST_WINDOW = 8
-TOTAL_WINDOW = INPUT_WINDOW + FORECAST_WINDOW
 MAX_GAP = 16
 
 #SENSOR_COLS = ['919', '157', '1959', '1016', '1994', '1870']
@@ -112,9 +109,9 @@ def create_samples(df_flowdata):
         strata_values = segment['strata'].values
 
         i = 0
-        while i + TOTAL_WINDOW <= len(segment):
+        while i + hp.TOTAL_WINDOW <= len(segment):
             row = {
-                col: sensor_values[i:i + TOTAL_WINDOW, idx]
+                col: sensor_values[i:i + hp.TOTAL_WINDOW, idx]
                 for idx, col in enumerate(SENSOR_COLS)
             }
 
@@ -123,7 +120,7 @@ def create_samples(df_flowdata):
             windows_df.loc[index] = row
             strata_series.loc[index] = strata_values[i]
 
-            i += TOTAL_WINDOW
+            i += hp.TOTAL_WINDOW
 
     return windows_df, strata_series
     
