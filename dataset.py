@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 import numpy as np
+import hyperparameters as hp
 
 class WaterFlowDataSet(Dataset):
 

@@ -1,32 +1,13 @@
 import pandas as pd
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
 import networkx as nx
 from scipy.spatial.distance import euclidean
 import torch
 from sklearn.model_selection import train_test_split
-from eda import plotGraph
-import hp
-
-
+import hyperparameters as hp
 
 pd.set_option('display.max_rows', 500)
-
-MAX_GAP = 16
-
-#SENSOR_COLS = ['919', '157', '1959', '1016', '1994', '1870']
-SENSOR_COLS = [0,1,2,3,4,5]
-SENSOR_DMA_TO_ID = {
-    '919': 0, 
-    '157': 1, 
-    '1016': 2, 
-    '1870': 3,
-    '1959': 4, 
-    '1994': 5,
-}
-
-
 
 #=================================================================================
 # Node feature preprocessing
@@ -99,20 +80,20 @@ def create_samples(df_flowdata):
     gap_mask = df_flowdata.index.to_series().diff() > pd.Timedelta(minutes=15)
     df_flowdata['segment_id'] = gap_mask.cumsum()
 
-    windows_df = pd.DataFrame(columns=SENSOR_COLS)
+    windows_df = pd.DataFrame(columns=hp.SENSOR_COLS)
     strata_series = pd.Series(dtype='object', name='strata')
 
     for _, segment in df_flowdata.groupby('segment_id'):
         segment = segment.drop(columns='segment_id')
 
-        sensor_values = segment[SENSOR_COLS].values
+        sensor_values = segment[hp.SENSOR_COLS].values
         strata_values = segment['strata'].values
 
         i = 0
         while i + hp.TOTAL_WINDOW <= len(segment):
             row = {
                 col: sensor_values[i:i + hp.TOTAL_WINDOW, idx]
-                for idx, col in enumerate(SENSOR_COLS)
+                for idx, col in enumerate(hp.SENSOR_COLS)
             }
 
             index = len(windows_df)
@@ -174,13 +155,13 @@ def preprocess_flowdata(path):
     # Removing a sensor with a large number of missing values
     df_flowdata = df_flowdata.drop('1615', axis=1)
 
-    df_flowdata = df_flowdata.rename(columns=SENSOR_DMA_TO_ID)
+    df_flowdata = df_flowdata.rename(columns=hp.SENSOR_DMA_TO_ID)
     df_flowdata = df_flowdata.sort_index(axis=1)
 
     # Removing rows which have outliers or are part of long sections of missing values
     rows_to_remove = pd.Series(False, index=df_flowdata.index) 
     for col in df_flowdata.columns:
-        rows_to_remove |= find_long_nan_sections(df_flowdata[col], MAX_GAP)
+        rows_to_remove |= find_long_nan_sections(df_flowdata[col], hp.MAX_GAP)
         #rows_to_remove |= find_outlier_values(df_flowdata[col])
     df_flowdata = df_flowdata[rows_to_remove == False]
 
@@ -203,14 +184,6 @@ def preprocess_flowdata(path):
 
 #=================================================================================
 # Graph preprocessing
-
-"""
-        split_df = {
-            'train' : [train_df, train_strata],
-            'val' : [val_df, val_strata],
-            'test' : [test_df, test_strata]
-        }
-"""
 #=================================================================================
 
 
@@ -237,7 +210,6 @@ def calc_edge_weight(technique, row1, row2):
 
 def assign_node_indices(g):
     node_list = list(g.nodes)
-
     node_to_index = {}
 
     for i, node in enumerate(node_list):
@@ -253,8 +225,8 @@ def get_edge_information(g, node_to_index):
     edge_list = g.edges(data=True)
 
     for start_node, end_node, weight in edge_list:
-        indexed_edge_start_nodes.append(SENSOR_DMA_TO_ID[start_node])
-        indexed_edge_end_nodes.append(SENSOR_DMA_TO_ID[end_node])
+        indexed_edge_start_nodes.append(hp.SENSOR_DMA_TO_ID[start_node])
+        indexed_edge_end_nodes.append(hp.SENSOR_DMA_TO_ID[end_node])
         edge_weights.append(weight['weight'])
 
     return [indexed_edge_start_nodes, indexed_edge_end_nodes], edge_weights

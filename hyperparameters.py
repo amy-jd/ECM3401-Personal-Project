@@ -13,3 +13,11 @@ SENSOR_DMA_TO_ID = {
     '1959': 4, 
     '1994': 5,
 }
+
+LEARNING_RATE = 1
+NB_EPOCHS = 100
+BATCH_SIZE = 16
+
+FLOWDATA_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Dataset\FlowData_for_SubsetGraph_12_with_7SensoredPipes.csv"
+SUBSETGRAPH_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Dataset\SubsetGraph_12_with_7SensoredPipes.csv"
+
