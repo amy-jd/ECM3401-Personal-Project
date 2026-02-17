@@ -119,9 +119,14 @@ def strat_random_sampling(windows_df, strata_series):
 
 def train_val_test_split(windows_df_sampled, strata_series_sampled):
 
+    train_size = hp.TRAIN_VAL_TEST_SPLIT[0]
+    temp_size = 1 - train_size
+    val_size = hp.TRAIN_VAL_TEST_SPLIT[1] / temp_size
+    test_size = hp.TRAIN_VAL_TEST_SPLIT[2] / temp_size
+
     train_idx, temp_idx = train_test_split(
         windows_df_sampled.index,
-        test_size=0.3,
+        test_size=temp_size,
         stratify=strata_series_sampled.loc[windows_df_sampled.index],
         random_state=42
     )
@@ -131,7 +136,7 @@ def train_val_test_split(windows_df_sampled, strata_series_sampled):
 
     val_idx, test_idx = train_test_split(
         temp_idx,
-        test_size=0.5,
+        test_size=test_size,
         stratify=strata_series_sampled.loc[temp_idx],
         random_state=42
     )
