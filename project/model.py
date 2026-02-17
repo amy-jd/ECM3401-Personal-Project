@@ -53,7 +53,7 @@ class PositionalEncoding(torch.nn.Module):
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
 
         Returns
-            Tensor: The network nodes and featureswith added positional encoding, with shape [num_nodes, num_timesteps]
+            Tensor: The network nodes and features with added positional encoding, with shape [num_nodes, num_timesteps]
         """
         x = x + self.pe[:x.size(0)]
         x = self.dropout(x)
@@ -71,7 +71,7 @@ class TemporalTransformer(torch.nn.Module):
         -   Transformer layer: Computes predictions for the masked nodes
         -   Postprocessing: reformatting the output back to shape [num_nodes, num_timesteps] by reducing the feature dimension back to 1
     """
-    def __init__(self, num_heads, embed_dim, device = 'cpu'):
+    def __init__(self, num_heads, embed_dim, context_window, forecast_window, device = 'cpu'):
         """
         Parameters:
             num_heads (int): The number of attention head the transformer encoder uses
@@ -82,8 +82,8 @@ class TemporalTransformer(torch.nn.Module):
         super().__init__()
         # Class parameters
         self.device = device
-        self.context_window = hp.CONTEXT_WINDOW
-        self.forecast_window = hp.FORECAST_WINDOW
+        self.context_window = context_window
+        self.forecast_window = forecast_window
         self.total_window = self.context_window + self.forecast_window
         
 
@@ -130,10 +130,10 @@ class TemporalTransformer(torch.nn.Module):
         return mask
 
 class SpatioTemporalBlock(torch.nn.Module):
-    def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim):
+    def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window):
         super().__init__()
         self.spatialBlock = GNN(input_channels, hidden_channels, output_channels)
-        self.temporalBlock = TemporalTransformer(num_heads, embed_dim)
+        self.temporalBlock = TemporalTransformer(num_heads, embed_dim, context_window, forecast_window)
 
     def forward(self, x, edge_index):
         """
@@ -149,9 +149,9 @@ class SpatioTemporalBlock(torch.nn.Module):
         return x
 
 class Model(torch.nn.Module):
-    def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim):
+    def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window):
         super().__init__()
-        self.spatio_temporal = SpatioTemporalBlock(input_channels, hidden_channels, output_channels, num_heads, embed_dim)
+        self.spatio_temporal = SpatioTemporalBlock(input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window)
         self.prediction = nn.Linear(hidden_channels, output_channels)
 
     def forward(self, x, edge_index):

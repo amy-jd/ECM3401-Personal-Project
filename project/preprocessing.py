@@ -70,12 +70,12 @@ def assign_strata(df_flowdata):
             ordered=False
         )
 
-    df_flowdata['strata'] = df_flowdata['time_of_day'].astype(str) + '_' + df_flowdata['part_of_week'].astype(str) + '_' + df_flowdata['season'].astype(str)
+    df_flowdata['strata'] = df_flowdata['part_of_week'].astype(str) + '_' + df_flowdata['season'].astype(str)
 
     return df_flowdata
 
 
-def create_samples(df_flowdata):
+def create_samples(df_flowdata, window_size):
 
     gap_mask = df_flowdata.index.to_series().diff() > pd.Timedelta(minutes=15)
     df_flowdata['segment_id'] = gap_mask.cumsum()
@@ -90,9 +90,9 @@ def create_samples(df_flowdata):
         strata_values = segment['strata'].values
 
         i = 0
-        while i + hp.TOTAL_WINDOW <= len(segment):
+        while i + window_size <= len(segment):
             row = {
-                col: sensor_values[i:i + hp.TOTAL_WINDOW, idx]
+                col: sensor_values[i:i + window_size, idx]
                 for idx, col in enumerate(hp.SENSOR_COLS)
             }
 
@@ -101,7 +101,7 @@ def create_samples(df_flowdata):
             windows_df.loc[index] = row
             strata_series.loc[index] = strata_values[i]
 
-            i += hp.TOTAL_WINDOW
+            i += window_size
 
     return windows_df, strata_series
     
@@ -146,7 +146,7 @@ def train_val_test_split(windows_df_sampled, strata_series_sampled):
     return [train_df, val_df, test_df], [train_strata, val_strata, test_strata]
 
 
-def preprocess_flowdata(path):
+def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
 
     # Reading in the flow data file
     df_flowdata = pd.read_csv(path, index_col=0)
@@ -173,7 +173,7 @@ def preprocess_flowdata(path):
 
     # Stratified random sampling
     df_flowdata = assign_strata(df_flowdata)
-    windows_df, strata_series = create_samples(df_flowdata)
+    windows_df, strata_series = create_samples(df_flowdata, window_size)
     windows_df_sampled, strata_series_sampled = strat_random_sampling(windows_df, strata_series)
 
     # Splitting into train val and test sets
