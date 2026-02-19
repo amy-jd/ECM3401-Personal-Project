@@ -41,7 +41,7 @@ def find_outlier_values(series):
     outlier_mask = diff > threshold
     return outlier_mask
 
-def assign_strata(df_flowdata):
+def assign_strata(df_flowdata, extra_series = False):
     """
     Takes a timeseries dataframe, and creates a corresponding series specificying each row's strata.
     """
@@ -64,10 +64,27 @@ def assign_strata(df_flowdata):
         }
     }
 
-    strata_df = pd.DataFrame(index=df_flowdata.index)
+    if extra_series == True:
 
-    for strata_name, strata_info in strata_dict.items():
-        strata_df[strata_name] = pd.cut(
+        strata_df = pd.DataFrame(index=df_flowdata.index)
+
+        for strata_name, strata_info in strata_dict.items():
+            strata_df[strata_name] = pd.cut(
+                strata_info['feature_origin'],
+                bins=strata_info['bins'],
+                labels=strata_info['labels'],
+                right=False,  
+                include_lowest=True,
+                ordered=False
+            )
+
+        strata_df['strata'] = strata_df['part_of_week'].astype(str) + '_' + strata_df['season'].astype(str)
+        
+        return strata_df
+    else:
+
+         for strata_name, strata_info in strata_dict.items():
+            df_flowdata[strata_name] = pd.cut(
             strata_info['feature_origin'],
             bins=strata_info['bins'],
             labels=strata_info['labels'],
@@ -76,12 +93,11 @@ def assign_strata(df_flowdata):
             ordered=False
         )
 
-    strata_df['strata'] = strata_df['part_of_week'].astype(str) + '_' + strata_df['season'].astype(str)
+    df_flowdata['strata'] = df_flowdata['part_of_week'].astype(str) + '_' + df_flowdata['season'].astype(str)
 
-    return strata_df
+    return df_flowdata
 
-
-def create_samples(df_flowdata, strata_df, window_size):
+def create_samples(df_flowdata, window_size):
     """
     Splits the dataset into continuous windows of size window_size, and specifies a strata value for each
     """
@@ -92,7 +108,6 @@ def create_samples(df_flowdata, strata_df, window_size):
     windows_df = pd.DataFrame(columns=hp.SENSOR_COLS)
     strata_series = pd.Series(dtype='object', name='strata')
 
-    windows_strata = pd.Series(dtype='object', name='strata')
 
     for _, segment in df_flowdata.groupby('segment_id'):
         segment = segment.drop(columns='segment_id')
@@ -160,35 +175,6 @@ def train_val_test_split(windows_df_sampled, strata_series_sampled):
 
     
     return [train_df, val_df, test_df], [train_strata, val_strata, test_strata]
-
-
-def assign_month_val(df_flowdata):
-    """
-    Calculates the month-year for each row in the dataset
-    These will be used to split the dataset into chunks for the train-test-val split
-    """
-    df_month_strata = pd.DataFrame(index=df_flowdata.index)
-    df_month_strata['year_month'] = df_flowdata['timestamp'].dt.to_period('M')
-    return df_month_strata 
-
-
-def month_thingy(df_flowdata, df_month_strata, train_val_test_ratios):
-    """
-    Split the month labels between train val and test sets
-    """
-    months = df_month_strata['year_month'].unique()
-    random.shuffle(months)
-
-    num_months = df_month_strata['year_month'].nunique()
-    train_ratio, val_ratio, test_ratio = train_val_test_ratios
-
-    num_months_train = int(num_months * train_ratio)
-    num_months_val = int(num_months * val_ratio)
-    num_months_test = num_months - num_months_train - num_months_val
-
-    train_months = months[:num_months_train]
-    val_months = months[num_months_train:num_months_train + num_months_val]
-    test_months = 
 
 
 

@@ -21,7 +21,7 @@ class GNN(torch.nn.Module):
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
         x = self.conv1(x, edge_index)
-        x = torch.relu(x)
+        x = torch.relu(x) #
         x = self.conv2(x, edge_index)
         x = torch.relu(x)
         x = self.conv3(x, edge_index)
@@ -151,8 +151,10 @@ class SpatioTemporalBlock(torch.nn.Module):
 class Model(torch.nn.Module):
     def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window):
         super().__init__()
-        self.spatio_temporal = SpatioTemporalBlock(input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window)
+        self.spatio_temporal1 = SpatioTemporalBlock(input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window)
+        self.spatio_temporal2 = SpatioTemporalBlock(input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window)
         self.prediction = nn.Linear(hidden_channels, output_channels)
+        #self.num_st_iterations = num_st_iterations
 
     def forward(self, x, edge_index):
         """
@@ -163,6 +165,7 @@ class Model(torch.nn.Module):
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        x = self.spatio_temporal(x, edge_index)
+        x = self.spatio_temporal1(x, edge_index) # i can do this a more fancy way in the future, using nn.modulelist 
+        x = self.spatio_temporal2(x, edge_index)
         x = self.prediction(x)
         return x
