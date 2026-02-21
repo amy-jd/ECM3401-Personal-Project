@@ -10,8 +10,7 @@ class GNN(torch.nn.Module):
         self.conv1 = GCNConv(input_channels, hidden_channels)
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
         self.conv3 = GCNConv(hidden_channels, hidden_channels)
-        self.conv4 = GCNConv(hidden_channels, hidden_channels)
-        self.conv5 = GCNConv(hidden_channels, output_channels)
+        self.conv4 = GCNConv(hidden_channels, output_channels)
  
     def forward(self, x, edge_index):
         """
@@ -28,10 +27,9 @@ class GNN(torch.nn.Module):
         x = torch.relu(x)
         x = self.conv3(x, edge_index)
         x = torch.relu(x)
-        #x = self.conv4(x, edge_index)
-        #x = torch.relu(x)
-        x = self.conv5(x, edge_index)
+        x = self.conv4(x, edge_index)
         x = torch.relu(x)
+
         return x
 
 class PositionalEncoding(torch.nn.Module):
@@ -88,13 +86,9 @@ class TemporalTransformer(torch.nn.Module):
         super().__init__()
         # Class parameters
         self.device = device
-        
 
-        self.context_to_gate = nn.Linear(context_dim, embed_dim)
+        #self.context_to_gate = nn.Linear(context_dim, embed_dim)
 
-        # Preprocessing layers
-        self.input_embedding  = nn.Linear(1, embed_dim)
-        self.positional_encoding = PositionalEncoding(embed_dim)
 
         # Tranformer layers
         self.trans1 = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads, batch_first=True)
@@ -113,22 +107,12 @@ class TemporalTransformer(torch.nn.Module):
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
 
-        # Adding an extra dimension so it is (batch_size, seq_len, 1)
-        x = x.unsqueeze(-1)
-        # Increasing the feature dimensions from 1 to embed_dim
-        x = self.input_embedding(x) 
-
         # Adding the context information to the input embedding, by using it as a gate
-        context_gate = self.context_to_gate(context)
-        sigmoid_gate = torch.sigmoid(context_gate)
-        sigmoid_gate = sigmoid_gate.unsqueeze(0).unsqueeze(0)
-        x = x * sigmoid_gate
+        #context_gate = self.context_to_gate(context)
+        #sigmoid_gate = torch.sigmoid(context_gate)
+        #sigmoid_gate = sigmoid_gate.unsqueeze(0).unsqueeze(0)
+        #x = x * sigmoid_gate
 
-        # Adding positional encoding so the temporal order is known by the model
-        x = self.positional_encoding(x) 
-
-        # Creating an attention mask, so that the model cannot see future time steps
-        attention_mask = self.generate_attention_mask() 
         # Passing through a transformer layer
         x = self.trans1(x, src_mask=attention_mask)
         x = self.trans2(x, src_mask=attention_mask)
@@ -200,12 +184,31 @@ class SpatioTemporalBlock(torch.nn.Module):
         mask[:self.context_window, :self.context_window] = False
         mask[self.context_window:, :self.context_window] = False
         return mask
+    
+class PredictionBlock(torch.nn.Module):
+    def __init__(self, input_channels, output_channels):
+        super().__init__()
+        self.fcn1 = nn.Linear(input_channels, output_channels)
+        self.fcn2 = nn.Linear(output_channels, output_channels)
+
+    def forward(self, x):
+        """
+        Parameters:
+            x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
+
+        Returns
+            Tensor: The output embedding with shape [num_nodes, num_timesteps]
+        """
+        x = self.fcn1(x)
+        x = torch.relu(x)
+        x = self.fcn2(x)
+        return x
 
 class Model(torch.nn.Module):
     def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, context_dim):
         super().__init__()
         self.spatio_temporal1 = SpatioTemporalBlock(input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, context_dim)
-        self.prediction = nn.Linear(hidden_channels, output_channels)
+        self.prediction = PredictionBlock(hidden_channels, output_channels)
         #self.num_st_iterations = num_st_iterations
 
     def forward(self, x, edge_index, context):

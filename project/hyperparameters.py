@@ -14,8 +14,8 @@ SENSOR_DMA_TO_ID = {
     '1994': 5,
 }
 
-LEARNING_RATE = 0.005
-NB_EPOCHS = 10
+LEARNING_RATE = 0.001
+NB_EPOCHS = 15
 BATCH_SIZE = 16
 
 FLOWDATA_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Dataset\FlowData_for_SubsetGraph_12_with_7SensoredPipes.csv"
