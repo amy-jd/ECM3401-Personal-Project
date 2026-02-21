@@ -9,7 +9,9 @@ class GNN(torch.nn.Module):
         super().__init__()
         self.conv1 = GCNConv(input_channels, hidden_channels)
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
-        self.conv3 = GCNConv(hidden_channels, output_channels)
+        self.conv3 = GCNConv(hidden_channels, hidden_channels)
+        self.conv4 = GCNConv(hidden_channels, hidden_channels)
+        self.conv5 = GCNConv(hidden_channels, output_channels)
  
     def forward(self, x, edge_index):
         """
@@ -25,6 +27,10 @@ class GNN(torch.nn.Module):
         x = self.conv2(x, edge_index)
         x = torch.relu(x)
         x = self.conv3(x, edge_index)
+        x = torch.relu(x)
+        #x = self.conv4(x, edge_index)
+        #x = torch.relu(x)
+        x = self.conv5(x, edge_index)
         x = torch.relu(x)
         return x
 
@@ -82,22 +88,18 @@ class TemporalTransformer(torch.nn.Module):
         super().__init__()
         # Class parameters
         self.device = device
-        self.context_window = context_window
-        self.forecast_window = forecast_window
-        self.total_window = self.context_window + self.forecast_window
         
-
-        # Preprocessing layers
-        self.input_embedding  = nn.Linear(1, embed_dim)
-        self.positional_encoding = PositionalEncoding(embed_dim)
+    
 
         # Tranformer layers
-        self.trans = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads, batch_first=True)
+        self.trans1 = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads, batch_first=True)
+        self.trans2 = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads, batch_first=True)
+        self.trans3 = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads, batch_first=True)
+        self.trans4 = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads, batch_first=True)
+        self.trans5 = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads, batch_first=True)
 
-        # FCN layers
-        self.fcn = nn.Linear(embed_dim, 1)
     
-    def forward(self, x):
+    def forward(self, x, attention_mask):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
@@ -105,22 +107,14 @@ class TemporalTransformer(torch.nn.Module):
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        # Adding an extra dimension so it is (batch_size, seq_len, 1)
-        x = x.unsqueeze(-1)
-        # Increasing the feature dimensions from 1 to embed_dim
-        x = self.input_embedding(x) 
-        # Adding positional encoding so the temporal order is known by the model
-        x = self.positional_encoding(x) 
 
-        # Creating an attention mask, so that the model cannot see future time steps
-        attention_mask = self.generate_attention_mask() 
         # Passing through a transformer layer
-        x = self.trans(x, src_mask=attention_mask)
+        x = self.trans1(x, src_mask=attention_mask)
+        x = self.trans2(x, src_mask=attention_mask)
+        x = self.trans3(x, src_mask=attention_mask)
+        #x = self.trans4(x, src_mask=attention_mask)
+        #x = self.trans5(x, src_mask=attention_mask)
 
-        # Reducing the feature dimensions back to 1
-        x = self.fcn(x)
-        # Removing the last dimensions to return it to (batch_size, seq_len)
-        x = x.squeeze(-1)
         return x 
     
     def generate_attention_mask(self):
@@ -132,8 +126,23 @@ class TemporalTransformer(torch.nn.Module):
 class SpatioTemporalBlock(torch.nn.Module):
     def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window):
         super().__init__()
+        self.context_window = context_window
+        self.forecast_window = forecast_window
+        self.total_window = self.context_window + self.forecast_window
+
+
+        
         self.spatialBlock = GNN(input_channels, hidden_channels, output_channels)
+
+        # Preprocessing layers
+        self.input_embedding  = nn.Linear(1, embed_dim)
+        self.positional_encoding = PositionalEncoding(embed_dim)
+
+
         self.temporalBlock = TemporalTransformer(num_heads, embed_dim, context_window, forecast_window)
+
+        # FCN layers
+        self.fcn = nn.Linear(embed_dim, 1)
 
     def forward(self, x, edge_index):
         """
@@ -145,14 +154,36 @@ class SpatioTemporalBlock(torch.nn.Module):
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
         x = self.spatialBlock(x, edge_index)
-        x = self.temporalBlock(x)
+
+        # Adding an extra dimension so it is (batch_size, seq_len, 1)
+        x = x.unsqueeze(-1)
+        # Increasing the feature dimensions from 1 to embed_dim
+        x = self.input_embedding(x) 
+        # Adding positional encoding so the temporal order is known by the model
+        x = self.positional_encoding(x) 
+
+        # Creating an attention mask, so that the model cannot see future time steps
+        attention_mask = self.generate_attention_mask() 
+
+        x = self.temporalBlock(x, attention_mask)
+
+        # Reducing the feature dimensions back to 1
+        x = self.fcn(x)
+        # Removing the last dimensions to return it to (batch_size, seq_len)
+        x = x.squeeze(-1)
+
         return x
+    
+    def generate_attention_mask(self):
+        mask = torch.ones(self.total_window, self.total_window, dtype=torch.bool)
+        mask[:self.context_window, :self.context_window] = False
+        mask[self.context_window:, :self.context_window] = False
+        return mask
 
 class Model(torch.nn.Module):
     def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window):
         super().__init__()
         self.spatio_temporal1 = SpatioTemporalBlock(input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window)
-        self.spatio_temporal2 = SpatioTemporalBlock(input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window)
         self.prediction = nn.Linear(hidden_channels, output_channels)
         #self.num_st_iterations = num_st_iterations
 
@@ -166,6 +197,5 @@ class Model(torch.nn.Module):
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
         x = self.spatio_temporal1(x, edge_index) # i can do this a more fancy way in the future, using nn.modulelist 
-        x = self.spatio_temporal2(x, edge_index)
         x = self.prediction(x)
         return x
