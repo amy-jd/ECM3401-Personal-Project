@@ -34,7 +34,7 @@ class WaterFlowDataSet(Dataset):
         #edge_weight_tensor = torch.tensor(self.edge_weight, dtype=torch.long)
 
         strata_row = self.df_strata.iloc[idx]
-        context_tensor = self.generate_context_tensor(strata_row)
+        #context_tensor = self.generate_context_tensor(strata_row)
 
         data = Data(
             x = x_masked,
@@ -42,7 +42,7 @@ class WaterFlowDataSet(Dataset):
             mask = (mask == 0),            
             edge_index = self.edge_index,
             edge_weight = self.edge_weight,
-            context = context_tensor
+            context = 1
         )
         return data
     
@@ -61,6 +61,6 @@ class WaterFlowDataSet(Dataset):
 
         return mask
     
-def generate_context_tensor(self, strata_row):
+#def generate_context_tensor(self, strata_row):
     
 
