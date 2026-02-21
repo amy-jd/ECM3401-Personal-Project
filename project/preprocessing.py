@@ -41,50 +41,33 @@ def find_outlier_values(series):
     outlier_mask = diff > threshold
     return outlier_mask
 
-def assign_strata(df_flowdata, extra_series = False):
+def assign_strata(df):
     """
     Takes a timeseries dataframe, and creates a corresponding series specificying each row's strata.
     """
 
     strata_dict = {
         'time_of_day': {
-            'feature_origin': df_flowdata.index.hour,
+            'feature_origin': df.index.hour,
             'bins': [0, 6, 12, 14, 18, 22, 24],  
             'labels': ['night', 'morning', 'midday', 'afternoon', 'evening', 'night']
         },
         'part_of_week': {
-            'feature_origin': df_flowdata.index.dayofweek,
+            'feature_origin': df.index.dayofweek,
             'bins': [0, 5, 7], 
             'labels': ['weekday', 'weekend']
         },
         'season': {
-            'feature_origin': df_flowdata.index.month,
+            'feature_origin': df.index.month,
             'bins': [0, 3, 6, 9, 12, 13], 
             'labels': ['winter', 'spring', 'summer', 'autumn', 'winter']
         }
     }
 
-    if extra_series == True:
+    strata_df = pd.DataFrame(index=df.index)
 
-        strata_df = pd.DataFrame(index=df_flowdata.index)
-
-        for strata_name, strata_info in strata_dict.items():
-            strata_df[strata_name] = pd.cut(
-                strata_info['feature_origin'],
-                bins=strata_info['bins'],
-                labels=strata_info['labels'],
-                right=False,  
-                include_lowest=True,
-                ordered=False
-            )
-
-        strata_df['strata'] = strata_df['part_of_week'].astype(str) + '_' + strata_df['season'].astype(str)
-        
-        return strata_df
-    else:
-
-         for strata_name, strata_info in strata_dict.items():
-            df_flowdata[strata_name] = pd.cut(
+    for strata_name, strata_info in strata_dict.items():
+        strata_df[strata_name] = pd.cut(
             strata_info['feature_origin'],
             bins=strata_info['bins'],
             labels=strata_info['labels'],
@@ -93,43 +76,83 @@ def assign_strata(df_flowdata, extra_series = False):
             ordered=False
         )
 
-    df_flowdata['strata'] = df_flowdata['part_of_week'].astype(str) + '_' + df_flowdata['season'].astype(str)
+    strata_df['strata'] = strata_df['part_of_week'].astype(str) + '_' + strata_df['season'].astype(str)
 
-    return df_flowdata
+    return strata_df
 
-def create_samples(df_flowdata, window_size):
+
+def create_samples(df, df_strata, sample_length, set_name, overlap):
     """
-    Splits the dataset into continuous windows of size window_size, and specifies a strata value for each
+    Creates samples of the data with a given length and overlap.
+
+    Note: 
+    - Currently all samples will start at the same time of day, as each one is 5 days long
+    - This would make the model struggle with differently timed inputs
+    - I will need to eventually add random starting points for the samples, but for now I will just create the samples with a fixed starting point to test the model
     """
 
-    gap_mask = df_flowdata.index.to_series().diff() > pd.Timedelta(minutes=15)
-    df_flowdata['segment_id'] = gap_mask.cumsum()
+    samples_df = pd.DataFrame(columns=hp.SENSOR_COLS)
+    samples_strata_df = pd.Series(dtype=str, index=samples_df.index)
 
-    windows_df = pd.DataFrame(columns=hp.SENSOR_COLS)
-    strata_series = pd.Series(dtype='object', name='strata')
+    # Find all the gaps in the data (where there are missing time steps / it is not continuous)
+    gap_mask = df.index.to_series().diff() > pd.Timedelta(minutes=15)
 
+    time_diffs = df.index.to_series().diff()
 
-    for _, segment in df_flowdata.groupby('segment_id'):
+    # Identify actual gaps (where diff > 15 minutes)
+    gap_durations = time_diffs[time_diffs > pd.Timedelta(minutes=15)]
+    print(f'\nGap summary for {set_name} set:')
+    for idx, gap in gap_durations.items():
+        prev_time = df.index[df.index.get_loc(idx) - 1]
+        print(f"Gap before {idx}: {gap} (from {prev_time} to {idx})")
+
+    # Split the data into all of the continous segments
+    df = df.copy()
+    df['segment_id'] = gap_mask.cumsum()
+    segments_df = df.groupby('segment_id')
+
+    print(f'Segments in {set_name} set: {len(segments_df)}')
+
+    if overlap:
+            step = sample_length // 2
+    else:
+        step = sample_length
+
+    # Split the data into all of the continuous segments and iterate through each segment
+    for _, segment in segments_df:
+
+        print(f'Processing segment {segment["segment_id"].iloc[0]} in {set_name} set, length: {len(segment)}, from {segment.index[0]} to {segment.index[-1]}')
+
+        # Get rid of the segment_id column
         segment = segment.drop(columns='segment_id')
 
-        sensor_values = segment[hp.SENSOR_COLS].values
-        strata_values = segment['strata'].values
+        strata_segment = df_strata.loc[segment.index]
 
+        num_samples = 0
         i = 0
-        while i + window_size <= len(segment):
-            row = {
-                col: sensor_values[i:i + window_size, idx]
-                for idx, col in enumerate(hp.SENSOR_COLS)
-            }
+        while i + sample_length <= len(segment):
+            index = len(samples_df)
 
-            index = len(windows_df)
+            sample_row = {}
+            strata_row = {}
+            sample = segment[i:i + sample_length]
+            strata_sample = strata_segment[i:i + sample_length]
 
-            windows_df.loc[index] = row
-            strata_series.loc[index] = strata_values[i] #
+            for col in hp.SENSOR_COLS:
+                sample_row[col] = sample[col].values
+            strata_row = strata_sample.values
 
-            i += window_size
+            samples_df.loc[index] = sample_row
+            samples_strata_df.loc[index] = strata_row
 
-    return windows_df, strata_series
+            i += step
+            num_samples += 1
+        
+        print(f'Created {num_samples}')
+        
+
+    
+    return samples_df, samples_strata_df
     
 def strat_random_sampling(windows_df, strata_series):
     counts = strata_series.value_counts()
@@ -177,6 +200,39 @@ def train_val_test_split(windows_df_sampled, strata_series_sampled):
     return [train_df, val_df, test_df], [train_strata, val_strata, test_strata]
 
 
+def month_based_train_val_test_split(flowdata_df, train_val_test_ratios):
+    # get all the months
+    df_month_strata = pd.DataFrame(index=flowdata_df.index)
+    # Use the index instead of a 'timestamp' column
+    df_month_strata['year_month'] = flowdata_df.index.to_period('M')
+    print(f"Rows per month: {df_month_strata['year_month'].value_counts().sort_index()}")
+
+    months = df_month_strata['year_month'].unique()
+    random.shuffle(months)
+
+    # assign each month to a set
+    num_months = df_month_strata['year_month'].nunique()
+    train_ratio, val_ratio, test_ratio = train_val_test_ratios
+
+    num_months_train = int(num_months * train_ratio)
+    num_months_val = int(num_months * val_ratio)
+    num_months_test = num_months - num_months_train - num_months_val
+
+    train_months = months[:num_months_train]
+    val_months = months[num_months_train:num_months_train + num_months_val]
+    test_months = months[num_months_train + num_months_val:]
+
+    # split the data into the sets
+    train_df = flowdata_df[df_month_strata['year_month'].isin(train_months)]
+    val_df = flowdata_df[df_month_strata['year_month'].isin(val_months)]
+    test_df = flowdata_df[df_month_strata['year_month'].isin(test_months)]
+
+    return train_df, val_df, test_df
+
+
+
+
+
 
 
 
@@ -205,15 +261,25 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
     # Applying a transformation
     df_flowdata = df_flowdata.apply(np.log1p)
 
-    # Stratified random sampling
-    df_flowdata = assign_strata(df_flowdata)
-    windows_df, strata_series = create_samples(df_flowdata, window_size)
-    windows_df_sampled, strata_series_sampled = strat_random_sampling(windows_df, strata_series)
+    datasets = []
+    strata = []
 
-    # Splitting into train val and test sets
-    split_df, split_df_strata = train_val_test_split(windows_df_sampled, strata_series_sampled)
+    train_df, val_df, test_df = month_based_train_val_test_split(df_flowdata, hp.TRAIN_VAL_TEST_SPLIT)
+    dfs = [train_df, val_df, test_df]
+    overlap = [True, True, False]
+
+    set_names = ['train', 'val', 'test']
+
+    for i, df in enumerate(dfs):
+        set_name = set_names[i]
+        strata_df = assign_strata(df)
+        samples_df, samples_strata_df = create_samples(df, strata_df, window_size, set_name, overlap=overlap[i])
+
+        datasets.append(samples_df)
+        strata.append(samples_strata_df)
+
    
-    return split_df, split_df_strata
+    return datasets, strata
 
 
 #=================================================================================
