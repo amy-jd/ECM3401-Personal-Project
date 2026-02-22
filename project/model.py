@@ -134,15 +134,12 @@ class SpatioTemporalBlock(torch.nn.Module):
         self.context_window = context_window
         self.forecast_window = forecast_window
         self.total_window = self.context_window + self.forecast_window
-
-
         
         self.spatialBlock = GNN(input_channels, hidden_channels, output_channels)
 
         # Preprocessing layers
         self.input_embedding  = nn.Linear(1, embed_dim)
         self.positional_encoding = PositionalEncoding(embed_dim)
-
 
         self.temporalBlock = TemporalTransformer(num_heads, embed_dim, context_window, forecast_window, context_dim)
 
@@ -167,10 +164,16 @@ class SpatioTemporalBlock(torch.nn.Module):
         # Adding positional encoding so the temporal order is known by the model
         x = self.positional_encoding(x) 
 
+        # Adding in the residual connection 
+        x = x + context
+
         # Creating an attention mask, so that the model cannot see future time steps
         attention_mask = self.generate_attention_mask() 
 
         x = self.temporalBlock(x, attention_mask, context)
+
+        # Adding in the residual connection 
+        x = x + context
 
         # Reducing the feature dimensions back to 1
         x = self.fcn(x)
@@ -180,9 +183,28 @@ class SpatioTemporalBlock(torch.nn.Module):
         return x
     
     def generate_attention_mask(self):
+        """
+        Generates the mask for the transformer component, which determines which time steps of the input data can pay attention to which other time steps.
+        Each row corresponds to a time step, and the columns correspond to which time steps it can pay attention to.
+
+        How it works:
+        - All items in the context window can pay attention to eachother
+        - Items in the context window cannot pay attention to any items in the forecast window
+        - Items in the forecast window can pay attention to items in the context window
+        - Items in the forecast window cannot pay attention to each other, as this would be giving them access to future information
+
+        Returns:
+            Tensor: The attention mask with shape [total_window, total_window]
+        """
+        # Creating a mask where False means pay attention, and True means do not pay attention
         mask = torch.ones(self.total_window, self.total_window, dtype=torch.bool)
+
+        # Setting all steps in the context window to be able to pay attention to each other
         mask[:self.context_window, :self.context_window] = False
+
+        # Setting all steps in the forecast window to be able to pay attention to steps in the context window
         mask[self.context_window:, :self.context_window] = False
+        
         return mask
     
 class PredictionBlock(torch.nn.Module):

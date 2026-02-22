@@ -11,8 +11,6 @@ class WaterFlowDataSet(Dataset):
         self.df_strata = df_strata
         self.edge_index = edge_index
         self.edge_weight = edge_weight
-        #self.T = num_timesteps
-        #self.mask_prob_nodes = mask_prob_nodes
         self.forecast_window = forecast_window
         self.node_names = list(df.columns)
         self.N = len(self.node_names)
@@ -34,7 +32,7 @@ class WaterFlowDataSet(Dataset):
         #edge_weight_tensor = torch.tensor(self.edge_weight, dtype=torch.long)
 
         strata_row = self.df_strata.iloc[idx]
-        #context_tensor = self.generate_context_tensor(strata_row)
+        context_tensor = self.generate_time_context_tensor(strata_row)
 
         data = Data(
             x = x_masked,
@@ -42,11 +40,20 @@ class WaterFlowDataSet(Dataset):
             mask = (mask == 0),            
             edge_index = self.edge_index,
             edge_weight = self.edge_weight,
-            context = 1
+            context = context_tensor
         )
         return data
     
     def generate_mask(self, x):
+        """
+        Generates a mask for the input data, where certain nodes and future time steps are masked.
+
+        Parameters:
+            x (Tensor): The input tensor of shape [num_nodes, num_timesteps]
+
+        Returns:
+            Tensor: A mask tensor of the same shape as x, where masked positions are 0 and unmasked positions are 1
+        """
 
         mask = torch.ones_like(x)
 
@@ -61,6 +68,15 @@ class WaterFlowDataSet(Dataset):
 
         return mask
     
-#def generate_context_tensor(self, strata_row):
+    def generate_time_context_tensor(self, strata_row):
+        """
+        Parameters:
+            strata_row (Series): The strata for a given sample, which specifies its time of day, day of week and season
+
+        Returns:
+            Tensor: A tensor representing the time context of the sample, which can be used as additional input to the model
+        """
+        context_tensor = 1
+        return context_tensor
     
 
