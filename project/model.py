@@ -12,22 +12,23 @@ class GNN(torch.nn.Module):
         self.conv3 = GCNConv(hidden_channels, hidden_channels)
         self.conv4 = GCNConv(hidden_channels, output_channels)
  
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, edge_weight):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
             edge_index (Tensor): The relationships between nodes
+            edge_weight (Tensor): The weights of the relationships between nodes
 
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        x = self.conv1(x, edge_index)
+        x = self.conv1(x, edge_index = edge_index, edge_weight = edge_weight)
         x = torch.relu(x) #
-        x = self.conv2(x, edge_index)
+        x = self.conv2(x, edge_index = edge_index, edge_weight = edge_weight)
         x = torch.relu(x)
-        x = self.conv3(x, edge_index)
+        x = self.conv3(x, edge_index = edge_index, edge_weight = edge_weight)
         x = torch.relu(x)
-        x = self.conv4(x, edge_index)
+        x = self.conv4(x, edge_index = edge_index, edge_weight = edge_weight)
         x = torch.relu(x)
 
         return x
@@ -166,16 +167,17 @@ class SpatioTemporalBlock(torch.nn.Module):
         # FCN layers
         self.fcn = nn.Linear(embed_dim, 1)
 
-    def forward(self, x, edge_index, context):
+    def forward(self, x, edge_index, edge_weight, context):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
             edge_index (Tensor): The relationships between nodes
+            edge_weight (Tensor): The weights of the relationships between nodes
 
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        x = self.spatialBlock(x, edge_index)
+        x = self.spatialBlock(x, edge_index, edge_weight)
 
         # Adding an extra dimension so it is (batch_size, seq_len, 1)
         x = x.unsqueeze(-1)
@@ -255,16 +257,17 @@ class Model(torch.nn.Module):
         self.prediction = PredictionBlock(hidden_channels, output_channels)
         #self.num_st_iterations = num_st_iterations
 
-    def forward(self, x, edge_index, context):
+    def forward(self, x, edge_index, edge_weight, context):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
             edge_index (Tensor): The relationships between nodes
+            edge_weight (Tensor): The weights of the relationships between nodes
 
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        x = self.spatio_temporal1(x, edge_index, context) # i can do this a more fancy way in the future, using nn.modulelist 
+        x = self.spatio_temporal1(x, edge_index, edge_weight, context) # i can do this a more fancy way in the future, using nn.modulelist 
 
         x = self.prediction(x)
         return x
