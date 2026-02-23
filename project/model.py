@@ -195,7 +195,7 @@ class SpatioTemporalBlock(torch.nn.Module):
         x = self.temporalBlock(x, attention_mask, context)
 
         # Adding in the residual connection 
-        x = x + temporal_context
+        #x = x + temporal_context
 
         # Reducing the feature dimensions back to 1
         x = self.fcn(x)
