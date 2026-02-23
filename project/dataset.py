@@ -25,7 +25,7 @@ class WaterFlowDataSet(Dataset):
         x = np.stack(row.values, axis=0)
         x = torch.tensor(x, dtype=torch.float)
 
-        mask = self.generate_mask(x)
+        mask, node_mask, forecast_mask = self.generate_mask(x)
         x_masked = x * mask
 
         #edge_index_tensor = torch.tensor(self.edge_index)
@@ -38,6 +38,8 @@ class WaterFlowDataSet(Dataset):
             x = x_masked,
             y = x,       
             mask = (mask == 0),            
+            node_mask = (node_mask == 0),
+            forecast_mask = (forecast_mask == 0),
             edge_index = self.edge_index,
             edge_weight = self.edge_weight,
             context = context_tensor
@@ -56,17 +58,21 @@ class WaterFlowDataSet(Dataset):
         """
 
         mask = torch.ones_like(x)
+        node_mask = torch.ones_like(x)
+        forecast_mask = torch.ones_like(x)
 
         # Randomly mask 1-3 nodes
         num_nodes_to_mask = torch.randint(1, 4, (1,)).item()
         node_indices = torch.randperm(self.N)[:num_nodes_to_mask]
+        node_mask[node_indices, :] = 0.0
         mask[node_indices, :] = 0.0  
 
         # Mask future nodes for forecasting
         if self.forecast_window > 0:
+            forecast_mask[:, -self.forecast_window:] = 0.0
             mask[:, -self.forecast_window:] = 0.0
 
-        return mask
+        return mask, node_mask, forecast_mask
     
     def generate_time_context_tensor(self, strata_row):
         """
