@@ -283,37 +283,62 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
 #=================================================================================
 
 
-def load_graph(file_path):
-
-    df_subsetgraph = pd.read_csv(file_path)
+def load_graph(df_subsetgraph):
+    """
+    Loads the graph structure from the subsetgraph dataframe, where sensors are represented as connected nodes.
+    """
+    
+    # Get all rows which have a sensor
     df_node_items = df_subsetgraph[df_subsetgraph['SensorIndicator'] == 1]
 
     g = nx.Graph()
+
+    # Iterate through each combination of sensors
     for i, row1 in df_node_items.iterrows():
         for j, row2 in df_node_items.iterrows():
+
+            # This if statement ensures each pair of sensors is only considered once and that sensors are not connected to themselves
             if row1['SensorDMA'] > row2['SensorDMA']:
-                g.add_edge(str(int(row1['SensorDMA'])), str(int(row2['SensorDMA'])), weight=calc_edge_weight('euclidean', row1, row2))
+                start_node = str(int(row1['SensorDMA']))
+                end_node = str(int(row2['SensorDMA']))
+
+                # Add an edge representing the sensor relationship
+                g.add_edge(start_node, end_node)
             
     return g
-
-
-def calc_edge_weight(technique, row1, row2):
-    if technique == 'euclidean':
-        return euclidean(row1[['XMid', 'YMid']], row2[['XMid', 'YMid']])
-    else:
-        raise ValueError(f"Unknown technique: {technique}")
     
 
-def assign_node_indices(g):
-    node_list = list(g.nodes)
-    node_to_index = {}
+def calc_edge_weight(df_subsetgraph, sensor_graph):
+    """
+    Calculates the edge weights between each pair of sensors, based on the shortest path between them.
+    
+    Parameters:
+        df_subsetgraph (DataFrame): The dataframe containing the flow network data
+        sensor_graph (Graph): The graph representing the sensors as connected nodes, with edges representing the relationships between them
 
-    for i, node in enumerate(node_list):
-        node_to_index[node] = i
+    Returns:
+        Graph: The input graph with edge weights added
+    """
+    g = nx.Graph()
 
-    return node_to_index
+    for i, row in df_subsetgraph.iterrows():
+        node1 = row['start_point']
+        node2 = row['end_point']
+        weight = euclidean(row[['Start_x', 'Start_y']], row[['End_x', 'End_y']])
+        g.add_edge(node1, node2, weight=weight)
 
-def get_edge_information(g, node_to_index):
+    for start_node, end_node in sensor_graph.edges:
+        node1 = df_subsetgraph.loc[df_subsetgraph['SensorDMA'] == int(start_node), 'start_point'].iloc[0]
+        node2 = df_subsetgraph.loc[df_subsetgraph['SensorDMA'] == int(end_node), 'start_point'].iloc[0]
+
+        distance = nx.dijkstra_path_length(g, node1, node2, weight='weight')
+
+        sensor_graph[start_node][end_node]['weight'] = distance
+
+    return sensor_graph
+
+
+def get_edge_information(g):
     indexed_edge_start_nodes = []
     indexed_edge_end_nodes = []
     edge_weights = []
@@ -328,23 +353,21 @@ def get_edge_information(g, node_to_index):
     return [indexed_edge_start_nodes, indexed_edge_end_nodes], edge_weights
 
 def preprocess_graph(path):
+    df_subsetgraph = pd.read_csv(path)
 
     # Abstract the flow network dataset, into a graph representing sensors as connected nodes
-    g = load_graph(path)
+    g = load_graph(df_subsetgraph)
 
+    # Assign edge weights based on distances to each pair of sensors
+    g = calc_edge_weight(df_subsetgraph, g)
+
+    # Removing a sensor with a large number of missing values
     g.remove_node('1615')
 
-    # Assign each node an index number
-    node_to_index = assign_node_indices(g)
-
     # Flattens the graph into an edge list and list of corresponding edge weights
-    edge_index, edge_weight = get_edge_information(g, node_to_index)
+    edge_index, edge_weight = get_edge_information(g)
 
-    # Converts the lists to tensors
-    edge_index_tensor = torch.tensor(edge_index)
-    edge_weight_tensor = torch.tensor(edge_weight, dtype=torch.long)
-
-    return edge_index_tensor, edge_weight_tensor
+    return edge_index, edge_weight
 
 
 

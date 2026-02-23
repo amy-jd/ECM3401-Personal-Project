@@ -28,8 +28,8 @@ class WaterFlowDataSet(Dataset):
         mask, node_mask, forecast_mask = self.generate_mask(x)
         x_masked = x * mask
 
-        #edge_index_tensor = torch.tensor(self.edge_index)
-        #edge_weight_tensor = torch.tensor(self.edge_weight, dtype=torch.long)
+        edge_index_tensor = torch.tensor(self.edge_index)
+        edge_weight_tensor = torch.tensor(self.edge_weight, dtype=torch.long)
 
         strata_row = self.df_strata.iloc[idx]
         context_tensor = self.generate_time_context_tensor(strata_row)
@@ -40,8 +40,8 @@ class WaterFlowDataSet(Dataset):
             mask = (mask == 0),            
             node_mask = (node_mask == 0),
             forecast_mask = (forecast_mask == 0),
-            edge_index = self.edge_index,
-            edge_weight = self.edge_weight,
+            edge_index = self.edge_index_tensor,
+            edge_weight = self.edge_weight_tensor,
             context = context_tensor
         )
         return data
