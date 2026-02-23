@@ -76,7 +76,19 @@ class WaterFlowDataSet(Dataset):
         Returns:
             Tensor: A tensor representing the time context of the sample, which can be used as additional input to the model
         """
-        context_tensor = 1
+
+        all_context = []
+
+        for strata in ['part_of_day', 'part_of_week', 'part_of_year']:
+            context = []
+            for val in strata_row[strata]:
+                val_index = hp.STRATA_TO_INDEX[strata][val]
+                context.append(val_index)
+            all_context.append(context)
+
+        context_tensor = torch.tensor(all_context, dtype=torch.long)
+
         return context_tensor
+            
     
 

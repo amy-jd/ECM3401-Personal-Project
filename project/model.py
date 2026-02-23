@@ -107,12 +107,6 @@ class TemporalTransformer(torch.nn.Module):
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
 
-        # Adding the context information to the input embedding, by using it as a gate
-        #context_gate = self.context_to_gate(context)
-        #sigmoid_gate = torch.sigmoid(context_gate)
-        #sigmoid_gate = sigmoid_gate.unsqueeze(0).unsqueeze(0)
-        #x = x * sigmoid_gate
-
         # Passing through a transformer layer
         x = self.trans1(x, src_mask=attention_mask)
         x = self.trans2(x, src_mask=attention_mask)
@@ -128,12 +122,38 @@ class TemporalTransformer(torch.nn.Module):
         mask[self.context_window:, :self.context_window] = False
         return mask
 
+
+class TemporalContextEmbedding(torch.nn.Module):
+    def __init__(self, context_dim, embed_dim):
+        super().__init__()
+        self.time_embedding = nn.Embedding(5,8)
+        self.week_Embedding = nn.Embedding(2,4)
+        self.season_embedding = nn.Embedding(4,6)
+
+        self.temporal_proj = nn.Linear(8 + 4 + 6, embed_dim)
+
+    def forward(self, context):
+        time_of_day = self.time_embedding(context[0])
+        day_of_week = self.week_Embedding(context[1])
+        season = self.season_embedding(context[2])
+
+        all_context = torch.cat((time_of_day, day_of_week, season), dim=-1)
+
+        context_embedded = self.temporal_proj(all_context)
+
+        # Adding an extra dimension so it is (1, seq_len, embed_dim) and can be added to the input embedding
+        context_embedded = context_embedded.unsqueeze(0)
+
+        return context_embedded
+
 class SpatioTemporalBlock(torch.nn.Module):
     def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, context_dim):
         super().__init__()
         self.context_window = context_window
         self.forecast_window = forecast_window
         self.total_window = self.context_window + self.forecast_window
+
+        self.temporal_context_embedding = TemporalContextEmbedding(context_dim, embed_dim)
         
         self.spatialBlock = GNN(input_channels, hidden_channels, output_channels)
 
@@ -164,8 +184,10 @@ class SpatioTemporalBlock(torch.nn.Module):
         # Adding positional encoding so the temporal order is known by the model
         x = self.positional_encoding(x) 
 
+        temporal_context = self.temporal_context_embedding(context)
+
         # Adding in the residual connection 
-        x = x + context
+        x = x + temporal_context
 
         # Creating an attention mask, so that the model cannot see future time steps
         attention_mask = self.generate_attention_mask() 
@@ -173,7 +195,7 @@ class SpatioTemporalBlock(torch.nn.Module):
         x = self.temporalBlock(x, attention_mask, context)
 
         # Adding in the residual connection 
-        x = x + context
+        x = x + temporal_context
 
         # Reducing the feature dimensions back to 1
         x = self.fcn(x)
@@ -204,7 +226,7 @@ class SpatioTemporalBlock(torch.nn.Module):
 
         # Setting all steps in the forecast window to be able to pay attention to steps in the context window
         mask[self.context_window:, :self.context_window] = False
-        
+
         return mask
     
 class PredictionBlock(torch.nn.Module):

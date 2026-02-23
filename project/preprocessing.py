@@ -47,7 +47,7 @@ def assign_strata(df):
     """
 
     strata_dict = {
-        'time_of_day': {
+        'part_of_day': {
             'feature_origin': df.index.hour,
             'bins': [0, 6, 12, 14, 18, 22, 24],  
             'labels': ['night', 'morning', 'midday', 'afternoon', 'evening', 'night']
@@ -57,7 +57,7 @@ def assign_strata(df):
             'bins': [0, 5, 7], 
             'labels': ['weekday', 'weekend']
         },
-        'season': {
+        'part_of_year': {
             'feature_origin': df.index.month,
             'bins': [0, 3, 6, 9, 12, 13], 
             'labels': ['winter', 'spring', 'summer', 'autumn', 'winter']
@@ -76,7 +76,7 @@ def assign_strata(df):
             ordered=False
         )
 
-    strata_df['strata'] = strata_df['part_of_week'].astype(str) + '_' + strata_df['season'].astype(str)
+    strata_df['strata'] = strata_df['part_of_week'].astype(str) + '_' + strata_df['part_of_year'].astype(str)
 
     return strata_df
 
@@ -92,7 +92,7 @@ def create_samples(df, df_strata, sample_length, set_name, overlap):
     """
 
     samples_df = pd.DataFrame(columns=hp.SENSOR_COLS)
-    samples_strata_df = pd.Series(dtype=str, index=samples_df.index)
+    samples_strata_df = pd.DataFrame(columns=df_strata.columns, index=samples_df.index)
 
     # Find all the gaps in the data (where there are missing time steps / it is not continuous)
     gap_mask = df.index.to_series().diff() > pd.Timedelta(minutes=15)
@@ -140,7 +140,9 @@ def create_samples(df, df_strata, sample_length, set_name, overlap):
 
             for col in hp.SENSOR_COLS:
                 sample_row[col] = sample[col].values
-            strata_row = strata_sample.values
+
+            for strata_col in strata_segment.columns:
+                strata_row[strata_col] = strata_sample[strata_col].values
 
             samples_df.loc[index] = sample_row
             samples_strata_df.loc[index] = strata_row
@@ -228,12 +230,6 @@ def month_based_train_val_test_split(flowdata_df, train_val_test_ratios):
     test_df = flowdata_df[df_month_strata['year_month'].isin(test_months)]
 
     return train_df, val_df, test_df
-
-
-
-
-
-
 
 
 def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):

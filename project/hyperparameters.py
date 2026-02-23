@@ -18,8 +18,32 @@ LEARNING_RATE = 0.001
 NB_EPOCHS = 25
 BATCH_SIZE = 16
 
+EMBED_DIM = 32
+
 FLOWDATA_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Dataset\FlowData_for_SubsetGraph_12_with_7SensoredPipes.csv"
 SUBSETGRAPH_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Dataset\SubsetGraph_12_with_7SensoredPipes.csv"
 
 TRAIN_VAL_TEST_SPLIT = [0.7, 0.15, 0.15]
 
+
+STRATA_TO_INDEX = {
+    "part_of_day": {
+        "night": 0,
+        "morning": 1,
+        "midday": 2,
+        "afternoon": 3,
+        "evening": 4
+    },
+
+    "part_of_week": {
+        "weekday": 0,
+        "weekend": 1
+    },
+
+    "part_of_year": {
+        "winter": 0,
+        "spring": 1,
+        "summer": 2,
+        "autumn": 3
+    }
+}
