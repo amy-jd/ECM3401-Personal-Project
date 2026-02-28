@@ -29,12 +29,12 @@ TRAIN_VAL_TEST_SPLIT = [0.7, 0.15, 0.15]
 STRATA_TO_INDEX = {
     "part_of_day": {
         "night": 0,
-        "morning": 1,
-        "midday": 2,
+        "early-morning": 1,
+        "late-morning": 2,
         "afternoon": 3,
-        "evening": 4
+        "early-evening": 4,
+        "late-evening": 5
     },
-
     "part_of_week": {
         "weekday": 0,
         "weekend": 1
