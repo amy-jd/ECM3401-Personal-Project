@@ -6,12 +6,14 @@ import hyperparameters as hp
 
 class WaterFlowDataSet(Dataset):
 
-    def __init__(self, df, df_strata, edge_index, edge_weight, forecast_window=0):
+    def __init__(self, df, df_strata, df_masks, edge_index, edge_weight):
         self.df = df
         self.df_strata = df_strata
+
+        self.masks_df, self.node_masks_df, self.forecast_masks_df = df_masks
+
         self.edge_index = edge_index
         self.edge_weight = edge_weight
-        self.forecast_window = forecast_window
         self.node_names = list(df.columns)
         self.N = len(self.node_names)
 
@@ -20,16 +22,12 @@ class WaterFlowDataSet(Dataset):
 
     def __getitem__(self, idx):
 
-        #TODO: is this tensor the right way round or should i .T it
         row = self.df.iloc[idx]
         x = np.stack(row.values, axis=0)
         x = torch.tensor(x, dtype=torch.float)
 
-        mask, node_mask, forecast_mask = self.generate_mask(x)
+        mask, node_mask, forecast_mask = self.generate_mask_tensors(idx)
         x_masked = x * mask
-
-        #edge_index_tensor = torch.tensor(self.edge_index)
-        #edge_weight_tensor = torch.tensor(self.edge_weight, dtype=torch.long)
 
         strata_row = self.df_strata.iloc[idx]
         context_tensor = self.generate_time_context_tensor(strata_row)
@@ -46,31 +44,25 @@ class WaterFlowDataSet(Dataset):
         )
         return data
     
-    def generate_mask(self, x):
+    
+    def generate_mask_tensors(self, idx):
         """
-        Generates a mask for the input data, where certain nodes and future time steps are masked.
-
         Parameters:
-            x (Tensor): The input tensor of shape [num_nodes, num_timesteps]
+            mask_row (Series): The row from the masks dataframe corresponding to the sample, which indicates which values are masked
+            node_mask_row (Series): The row from the node masks dataframe corresponding to the sample, which indicates which nodes are masked
+            forecast_mask_row (Series): The row from the forecast masks dataframe corresponding to the sample, which indicates which time steps in the forecast window are masked
 
         Returns:
-            Tensor: A mask tensor of the same shape as x, where masked positions are 0 and unmasked positions are 1
+            Tuple[Tensor, Tensor, Tensor]: Tensors representing the value mask, node mask and forecast mask for the sample
         """
+        mask_row = self.masks_df.iloc[idx]
+        mask = torch.tensor(np.stack(mask_row.values, axis=0), dtype=torch.float)
 
-        mask = torch.ones_like(x)
-        node_mask = torch.ones_like(x)
-        forecast_mask = torch.ones_like(x)
+        node_mask_row = self.node_masks_df.iloc[idx]
+        node_mask = torch.tensor(np.stack(node_mask_row.values, axis=0), dtype=torch.float)
 
-        # Randomly mask 1-3 nodes
-        num_nodes_to_mask = torch.randint(1, 4, (1,)).item()
-        node_indices = torch.randperm(self.N)[:num_nodes_to_mask]
-        node_mask[node_indices, :] = 0.0
-        mask[node_indices, :] = 0.0  
-
-        # Mask future nodes for forecasting
-        if self.forecast_window > 0:
-            forecast_mask[:, -self.forecast_window:] = 0.0
-            mask[:, -self.forecast_window:] = 0.0
+        forecast_mask_row = self.forecast_masks_df.iloc[idx]
+        forecast_mask = torch.tensor(np.stack(forecast_mask_row.values, axis=0), dtype=torch.float)
 
         return mask, node_mask, forecast_mask
     

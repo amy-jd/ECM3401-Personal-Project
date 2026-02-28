@@ -5,6 +5,7 @@ import networkx as nx
 from scipy.spatial.distance import euclidean
 import torch
 from sklearn.model_selection import train_test_split
+from itertools import combinations
 import hyperparameters as hp
 import random
 
@@ -49,8 +50,8 @@ def assign_strata(df):
     strata_dict = {
         'part_of_day': {
             'feature_origin': df.index.hour,
-            'bins': [0, 6, 12, 14, 18, 22, 24],  
-            'labels': ['night', 'morning', 'midday', 'afternoon', 'evening', 'night']
+            'bins': [0, 5, 9, 13, 17, 20, 24],  
+            'labels': ['night', 'early-morning', 'late-morning', 'afternoon', 'early-evening', 'late-evening']
         },
         'part_of_week': {
             'feature_origin': df.index.dayofweek,
@@ -58,8 +59,8 @@ def assign_strata(df):
             'labels': ['weekday', 'weekend']
         },
         'part_of_year': {
-            'feature_origin': df.index.month,
-            'bins': [0, 3, 6, 9, 12, 13], 
+            'feature_origin': df.index.isocalendar().week,
+            'bins': [0, 13, 31, 39, 50, 53], 
             'labels': ['winter', 'spring', 'summer', 'autumn', 'winter']
         }
     }
@@ -76,7 +77,7 @@ def assign_strata(df):
             ordered=False
         )
 
-    strata_df['strata'] = strata_df['part_of_week'].astype(str) + '_' + strata_df['part_of_year'].astype(str)
+    strata_df['strata'] = strata_df['part_of_day'].astype(str) + '_' + strata_df['part_of_week'].astype(str) + '_' + strata_df['part_of_year'].astype(str)
 
     return strata_df
 
@@ -156,16 +157,107 @@ def create_samples(df, df_strata, sample_length, set_name, overlap):
     
     return samples_df, samples_strata_df
     
-def strat_random_sampling(windows_df, strata_series):
+def strat_random_sampling(windows_df, strata_df):
+    strata_series = strata_df['strata'].apply(lambda arr: arr[0]) 
+
     counts = strata_series.value_counts()
     min_count = counts.min()
 
     sampled_idx = strata_series.groupby(strata_series).sample(n=min_count, random_state=42).index
 
     windows_df_sampled = windows_df.loc[sampled_idx]
-    strata_series_sampled = strata_series.loc[sampled_idx]
+    strata_df_sampled = strata_df.loc[sampled_idx]
 
-    return windows_df_sampled, strata_series_sampled
+    return windows_df_sampled, strata_df_sampled
+
+
+def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
+    """
+    For each input sample, generates masked variations for every combination
+    of 1-3 masked nodes, with the forecast window also masked in every variation.
+
+    Parameters:
+        samples_df: DataFrame where each row is a sample, columns are sensor IDs,
+                    and each cell contains a numpy array of length sample_length.
+        samples_strata_df: Corresponding strata DataFrame.
+        forecast_window: Number of timesteps at the end to mask for forecasting.
+
+    Returns:
+        expanded_samples_df: DataFrame with repeated samples (one per node combo).
+        masks_df: Combined mask DataFrame (node + forecast masks merged).
+        node_masks_df: DataFrame containing only the node masks.
+        forecast_masks_df: DataFrame containing only the forecast masks.
+        expanded_strata_df: Strata DataFrame expanded to match.
+    """
+    sensor_cols = hp.SENSOR_COLS
+    num_nodes = len(sensor_cols)
+    sample_length = len(df.iloc[0][sensor_cols[0]])
+
+    # Generate all combinations of 1-3 nodes to mask
+    node_combos = []
+    for num_masked in range(1, 4):
+        for combo in combinations(range(num_nodes), num_masked):
+            node_combos.append(combo)
+
+    total_variations = len(node_combos) * len(df)
+    print(f"Generating {len(node_combos)} masked variations per sample "
+          f"({len(df)} samples, {total_variations} total)")
+
+    expanded_rows = []
+    mask_rows = []
+    node_mask_rows = []
+    forecast_mask_rows = []
+    strata_rows = []
+
+    for idx in range(len(df)):
+        sample_row = df.iloc[idx]
+        strata_row = strata_df.iloc[idx]
+
+        for combo in node_combos:
+            masked_node_set = set(combo)
+
+            mask_entry = {}
+            node_mask_entry = {}
+            forecast_mask_entry = {}
+
+            for col_idx, col in enumerate(sensor_cols):
+                mask = np.ones(sample_length)
+                node_mask = np.ones(sample_length)
+                forecast_mask = np.ones(sample_length)
+
+                # Mask selected nodes (entire time series)
+                if col_idx in masked_node_set:
+                    node_mask[:] = 0.0
+                    mask[:] = 0.0
+
+                # Mask forecast window (last N timesteps for all nodes)
+                if forecast_window > 0:
+                    forecast_mask[-forecast_window:] = 0.0
+                    mask[-forecast_window:] = 0.0
+
+                mask_entry[col] = mask
+                node_mask_entry[col] = node_mask
+                forecast_mask_entry[col] = forecast_mask
+
+            expanded_rows.append(sample_row.to_dict())
+            mask_rows.append(mask_entry)
+            node_mask_rows.append(node_mask_entry)
+            forecast_mask_rows.append(forecast_mask_entry)
+            strata_rows.append(strata_row.to_dict())
+
+    expanded_samples_df = pd.DataFrame(expanded_rows, columns=sensor_cols)
+    masks_df = pd.DataFrame(mask_rows, columns=sensor_cols)
+    node_masks_df = pd.DataFrame(node_mask_rows, columns=sensor_cols)
+    forecast_masks_df = pd.DataFrame(forecast_mask_rows, columns=sensor_cols)
+    expanded_strata_df = pd.DataFrame(strata_rows, columns=strata_df.columns)
+
+    expanded_samples_df.reset_index(drop=True, inplace=True)
+    masks_df.reset_index(drop=True, inplace=True)
+    node_masks_df.reset_index(drop=True, inplace=True)
+    forecast_masks_df.reset_index(drop=True, inplace=True)
+    expanded_strata_df.reset_index(drop=True, inplace=True)
+
+    return expanded_samples_df, masks_df, node_masks_df, forecast_masks_df, expanded_strata_df
 
 
 def train_val_test_split(windows_df_sampled, strata_series_sampled):
@@ -266,16 +358,29 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
 
     set_names = ['train', 'val', 'test']
 
+    masks = []
+    node_masks = []
+    forecast_masks = []
+
     for i, df in enumerate(dfs):
         set_name = set_names[i]
         strata_df = assign_strata(df)
         samples_df, samples_strata_df = create_samples(df, strata_df, window_size, set_name, overlap=overlap[i])
+        sampled_df, sampled_strata_df = strat_random_sampling(samples_df, samples_strata_df)
 
-        datasets.append(samples_df)
-        strata.append(samples_strata_df)
+        # Generate all masked variations
+        expanded_df, mask_df, node_mask_df, forecast_mask_df, expanded_strata_df = generate_masks(sampled_df, sampled_strata_df)
 
-   
-    return datasets, strata
+        print(f'{set_name} set: {len(expanded_df)} samples (from {len(sampled_df)} base samples)')
+        print(f'{set_name} set strata distribution:\n{expanded_strata_df["strata"].value_counts()}')
+
+        datasets.append(expanded_df)
+        masks.append(mask_df)
+        node_masks.append(node_mask_df)
+        forecast_masks.append(forecast_mask_df)
+        strata.append(expanded_strata_df)
+
+    return datasets, strata, list(zip(masks, node_masks, forecast_masks))
 
 
 #=================================================================================

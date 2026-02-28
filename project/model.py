@@ -126,7 +126,7 @@ class TemporalTransformer(torch.nn.Module):
 class TemporalContextEmbedding(torch.nn.Module):
     def __init__(self, context_dim, embed_dim):
         super().__init__()
-        self.time_embedding = nn.Embedding(5,8)
+        self.time_embedding = nn.Embedding(6,8)
         self.week_Embedding = nn.Embedding(2,4)
         self.season_embedding = nn.Embedding(4,6)
 
