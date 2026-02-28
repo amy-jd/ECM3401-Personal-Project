@@ -10,7 +10,7 @@ class WaterFlowDataSet(Dataset):
         self.df = df
         self.df_strata = df_strata
 
-        self.masks_df, self.node_masks_df, self.forecast_masks_df = df_masks
+        self.masks_df, self.node_masks_df, self.forecast_masks_df, self.prediction_masks_df = df_masks
 
         self.edge_index = edge_index
         self.edge_weight = edge_weight
@@ -26,7 +26,7 @@ class WaterFlowDataSet(Dataset):
         x = np.stack(row.values, axis=0)
         x = torch.tensor(x, dtype=torch.float)
 
-        mask, node_mask, forecast_mask = self.generate_mask_tensors(idx)
+        mask, node_mask, forecast_mask, prediction_mask = self.generate_mask_tensors(idx)
         x_masked = x * mask
 
         strata_row = self.df_strata.iloc[idx]
@@ -38,6 +38,7 @@ class WaterFlowDataSet(Dataset):
             mask = (mask == 0),            
             node_mask = (node_mask == 0),
             forecast_mask = (forecast_mask == 0),
+            prediction_mask = (prediction_mask == 0),
             edge_index = self.edge_index,
             edge_weight = self.edge_weight,
             context = context_tensor
@@ -48,12 +49,14 @@ class WaterFlowDataSet(Dataset):
     def generate_mask_tensors(self, idx):
         """
         Parameters:
-            mask_row (Series): The row from the masks dataframe corresponding to the sample, which indicates which values are masked
-            node_mask_row (Series): The row from the node masks dataframe corresponding to the sample, which indicates which nodes are masked
-            forecast_mask_row (Series): The row from the forecast masks dataframe corresponding to the sample, which indicates which time steps in the forecast window are masked
+            idx (int): The index of the sample to generate masks for
 
         Returns:
-            Tuple[Tensor, Tensor, Tensor]: Tensors representing the value mask, node mask and forecast mask for the sample
+            Tuple[Tensor, Tensor, Tensor, Tensor]: Tensors representing:
+                - mask: combined input mask (node + forecast) used to zero out input values
+                - node_mask: which nodes are fully masked
+                - forecast_mask: which timesteps are in the forecast window
+                - prediction_mask: which positions the model should predict (masked nodes only)
         """
         mask_row = self.masks_df.iloc[idx]
         mask = torch.tensor(np.stack(mask_row.values, axis=0), dtype=torch.float)
@@ -64,7 +67,10 @@ class WaterFlowDataSet(Dataset):
         forecast_mask_row = self.forecast_masks_df.iloc[idx]
         forecast_mask = torch.tensor(np.stack(forecast_mask_row.values, axis=0), dtype=torch.float)
 
-        return mask, node_mask, forecast_mask
+        prediction_mask_row = self.prediction_masks_df.iloc[idx]
+        prediction_mask = torch.tensor(np.stack(prediction_mask_row.values, axis=0), dtype=torch.float)
+
+        return mask, node_mask, forecast_mask, prediction_mask
     
     def generate_time_context_tensor(self, strata_row):
         """

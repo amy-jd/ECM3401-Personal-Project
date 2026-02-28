@@ -184,9 +184,10 @@ def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
 
     Returns:
         expanded_samples_df: DataFrame with repeated samples (one per node combo).
-        masks_df: Combined mask DataFrame (node + forecast masks merged).
+        masks_df: Combined input mask DataFrame (node + forecast masks merged). Used to zero out input values.
         node_masks_df: DataFrame containing only the node masks.
         forecast_masks_df: DataFrame containing only the forecast masks.
+        prediction_masks_df: Prediction target mask - only masked nodes should be predicted.
         expanded_strata_df: Strata DataFrame expanded to match.
     """
     sensor_cols = hp.SENSOR_COLS
@@ -207,6 +208,7 @@ def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
     mask_rows = []
     node_mask_rows = []
     forecast_mask_rows = []
+    prediction_mask_rows = []
     strata_rows = []
 
     for idx in range(len(df)):
@@ -219,6 +221,7 @@ def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
             mask_entry = {}
             node_mask_entry = {}
             forecast_mask_entry = {}
+            prediction_mask_entry = {}
 
             for col_idx, col in enumerate(sensor_cols):
                 mask = np.ones(sample_length)
@@ -235,29 +238,37 @@ def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
                     forecast_mask[-forecast_window:] = 0.0
                     mask[-forecast_window:] = 0.0
 
+                # Prediction mask: only masked nodes need predictions
+                # (forecast window of unmasked nodes is hidden but not predicted)
+                prediction_mask = node_mask.copy()
+
                 mask_entry[col] = mask
                 node_mask_entry[col] = node_mask
                 forecast_mask_entry[col] = forecast_mask
+                prediction_mask_entry[col] = prediction_mask
 
             expanded_rows.append(sample_row.to_dict())
             mask_rows.append(mask_entry)
             node_mask_rows.append(node_mask_entry)
             forecast_mask_rows.append(forecast_mask_entry)
+            prediction_mask_rows.append(prediction_mask_entry)
             strata_rows.append(strata_row.to_dict())
 
     expanded_samples_df = pd.DataFrame(expanded_rows, columns=sensor_cols)
     masks_df = pd.DataFrame(mask_rows, columns=sensor_cols)
     node_masks_df = pd.DataFrame(node_mask_rows, columns=sensor_cols)
     forecast_masks_df = pd.DataFrame(forecast_mask_rows, columns=sensor_cols)
+    prediction_masks_df = pd.DataFrame(prediction_mask_rows, columns=sensor_cols)
     expanded_strata_df = pd.DataFrame(strata_rows, columns=strata_df.columns)
 
     expanded_samples_df.reset_index(drop=True, inplace=True)
     masks_df.reset_index(drop=True, inplace=True)
     node_masks_df.reset_index(drop=True, inplace=True)
     forecast_masks_df.reset_index(drop=True, inplace=True)
+    prediction_masks_df.reset_index(drop=True, inplace=True)
     expanded_strata_df.reset_index(drop=True, inplace=True)
 
-    return expanded_samples_df, masks_df, node_masks_df, forecast_masks_df, expanded_strata_df
+    return expanded_samples_df, masks_df, node_masks_df, forecast_masks_df, prediction_masks_df, expanded_strata_df
 
 
 def train_val_test_split(windows_df_sampled, strata_series_sampled):
@@ -361,6 +372,7 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
     masks = []
     node_masks = []
     forecast_masks = []
+    prediction_masks = []
 
     for i, df in enumerate(dfs):
         set_name = set_names[i]
@@ -369,7 +381,7 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
         sampled_df, sampled_strata_df = strat_random_sampling(samples_df, samples_strata_df)
 
         # Generate all masked variations
-        expanded_df, mask_df, node_mask_df, forecast_mask_df, expanded_strata_df = generate_masks(sampled_df, sampled_strata_df)
+        expanded_df, mask_df, node_mask_df, forecast_mask_df, prediction_mask_df, expanded_strata_df = generate_masks(sampled_df, sampled_strata_df)
 
         print(f'{set_name} set: {len(expanded_df)} samples (from {len(sampled_df)} base samples)')
         print(f'{set_name} set strata distribution:\n{expanded_strata_df["strata"].value_counts()}')
@@ -378,9 +390,10 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
         masks.append(mask_df)
         node_masks.append(node_mask_df)
         forecast_masks.append(forecast_mask_df)
+        prediction_masks.append(prediction_mask_df)
         strata.append(expanded_strata_df)
 
-    return datasets, strata, list(zip(masks, node_masks, forecast_masks))
+    return datasets, strata, list(zip(masks, node_masks, forecast_masks, prediction_masks))
 
 
 #=================================================================================
