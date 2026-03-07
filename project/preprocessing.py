@@ -42,6 +42,35 @@ def find_outlier_values(series):
     outlier_mask = diff > threshold
     return outlier_mask
 
+def month_based_train_val_test_split(flowdata_df, train_val_test_ratios):
+    # get all the months
+    df_month_strata = pd.DataFrame(index=flowdata_df.index)
+    # Use the index instead of a 'timestamp' column
+    df_month_strata['year_month'] = flowdata_df.index.to_period('M')
+    print(f"Rows per month: {df_month_strata['year_month'].value_counts().sort_index()}")
+
+    months = df_month_strata['year_month'].unique()
+    random.shuffle(months)
+
+    # assign each month to a set
+    num_months = df_month_strata['year_month'].nunique()
+    train_ratio, val_ratio, test_ratio = train_val_test_ratios
+
+    num_months_train = int(num_months * train_ratio)
+    num_months_val = int(num_months * val_ratio)
+    num_months_test = num_months - num_months_train - num_months_val
+
+    train_months = months[:num_months_train]
+    val_months = months[num_months_train:num_months_train + num_months_val]
+    test_months = months[num_months_train + num_months_val:]
+
+    # split the data into the sets
+    train_df = flowdata_df[df_month_strata['year_month'].isin(train_months)]
+    val_df = flowdata_df[df_month_strata['year_month'].isin(val_months)]
+    test_df = flowdata_df[df_month_strata['year_month'].isin(test_months)]
+
+    return train_df, val_df, test_df
+
 def assign_strata(df):
     """
     Takes a timeseries dataframe, and creates a corresponding series specificying each row's strata.
@@ -173,12 +202,10 @@ def strat_random_sampling(windows_df, strata_df):
 
 def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
     """
-    For each input sample, generates masked variations for every combination
-    of 1-3 masked nodes, with the forecast window also masked in every variation.
+    For each input sample, generates masked variations for every combination of 1-3 masked nodes, with the forecast window also masked in every variation.
 
     Parameters:
-        samples_df: DataFrame where each row is a sample, columns are sensor IDs,
-                    and each cell contains a numpy array of length sample_length.
+        samples_df: DataFrame where each row is a sample, columns are sensor IDs, and each cell contains a numpy array of length sample_length.
         samples_strata_df: Corresponding strata DataFrame.
         forecast_window: Number of timesteps at the end to mask for forecasting.
 
@@ -187,7 +214,6 @@ def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
         masks_df: Combined input mask DataFrame (node + forecast masks merged). Used to zero out input values.
         node_masks_df: DataFrame containing only the node masks.
         forecast_masks_df: DataFrame containing only the forecast masks.
-        prediction_masks_df: Prediction target mask - only masked nodes should be predicted.
         expanded_strata_df: Strata DataFrame expanded to match.
     """
     sensor_cols = hp.SENSOR_COLS
@@ -208,7 +234,6 @@ def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
     mask_rows = []
     node_mask_rows = []
     forecast_mask_rows = []
-    prediction_mask_rows = []
     strata_rows = []
 
     for idx in range(len(df)):
@@ -221,7 +246,6 @@ def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
             mask_entry = {}
             node_mask_entry = {}
             forecast_mask_entry = {}
-            prediction_mask_entry = {}
 
             for col_idx, col in enumerate(sensor_cols):
                 mask = np.ones(sample_length)
@@ -238,101 +262,29 @@ def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
                     forecast_mask[-forecast_window:] = 0.0
                     mask[-forecast_window:] = 0.0
 
-                # Prediction mask: only masked nodes need predictions
-                # (forecast window of unmasked nodes is hidden but not predicted)
-                prediction_mask = node_mask.copy()
-
                 mask_entry[col] = mask
                 node_mask_entry[col] = node_mask
                 forecast_mask_entry[col] = forecast_mask
-                prediction_mask_entry[col] = prediction_mask
 
             expanded_rows.append(sample_row.to_dict())
             mask_rows.append(mask_entry)
             node_mask_rows.append(node_mask_entry)
             forecast_mask_rows.append(forecast_mask_entry)
-            prediction_mask_rows.append(prediction_mask_entry)
             strata_rows.append(strata_row.to_dict())
 
     expanded_samples_df = pd.DataFrame(expanded_rows, columns=sensor_cols)
     masks_df = pd.DataFrame(mask_rows, columns=sensor_cols)
     node_masks_df = pd.DataFrame(node_mask_rows, columns=sensor_cols)
     forecast_masks_df = pd.DataFrame(forecast_mask_rows, columns=sensor_cols)
-    prediction_masks_df = pd.DataFrame(prediction_mask_rows, columns=sensor_cols)
     expanded_strata_df = pd.DataFrame(strata_rows, columns=strata_df.columns)
 
     expanded_samples_df.reset_index(drop=True, inplace=True)
     masks_df.reset_index(drop=True, inplace=True)
     node_masks_df.reset_index(drop=True, inplace=True)
     forecast_masks_df.reset_index(drop=True, inplace=True)
-    prediction_masks_df.reset_index(drop=True, inplace=True)
     expanded_strata_df.reset_index(drop=True, inplace=True)
 
-    return expanded_samples_df, masks_df, node_masks_df, forecast_masks_df, prediction_masks_df, expanded_strata_df
-
-
-def train_val_test_split(windows_df_sampled, strata_series_sampled):
-
-    train_size = hp.TRAIN_VAL_TEST_SPLIT[0]
-    temp_size = 1 - train_size
-    val_size = hp.TRAIN_VAL_TEST_SPLIT[1] / temp_size
-    test_size = hp.TRAIN_VAL_TEST_SPLIT[2] / temp_size
-
-    train_idx, temp_idx = train_test_split(
-        windows_df_sampled.index,
-        test_size=temp_size,
-        stratify=strata_series_sampled.loc[windows_df_sampled.index],
-        random_state=42
-    )
-
-    train_df = windows_df_sampled.loc[train_idx]
-    train_strata = strata_series_sampled.loc[train_idx]
-
-    val_idx, test_idx = train_test_split(
-        temp_idx,
-        test_size=test_size,
-        stratify=strata_series_sampled.loc[temp_idx],
-        random_state=42
-    )
-
-    val_df = windows_df_sampled.loc[val_idx]
-    val_strata = strata_series_sampled.loc[val_idx]
-
-    test_df = windows_df_sampled.loc[test_idx]
-    test_strata = strata_series_sampled.loc[test_idx]
-
-    
-    return [train_df, val_df, test_df], [train_strata, val_strata, test_strata]
-
-
-def month_based_train_val_test_split(flowdata_df, train_val_test_ratios):
-    # get all the months
-    df_month_strata = pd.DataFrame(index=flowdata_df.index)
-    # Use the index instead of a 'timestamp' column
-    df_month_strata['year_month'] = flowdata_df.index.to_period('M')
-    print(f"Rows per month: {df_month_strata['year_month'].value_counts().sort_index()}")
-
-    months = df_month_strata['year_month'].unique()
-    random.shuffle(months)
-
-    # assign each month to a set
-    num_months = df_month_strata['year_month'].nunique()
-    train_ratio, val_ratio, test_ratio = train_val_test_ratios
-
-    num_months_train = int(num_months * train_ratio)
-    num_months_val = int(num_months * val_ratio)
-    num_months_test = num_months - num_months_train - num_months_val
-
-    train_months = months[:num_months_train]
-    val_months = months[num_months_train:num_months_train + num_months_val]
-    test_months = months[num_months_train + num_months_val:]
-
-    # split the data into the sets
-    train_df = flowdata_df[df_month_strata['year_month'].isin(train_months)]
-    val_df = flowdata_df[df_month_strata['year_month'].isin(val_months)]
-    test_df = flowdata_df[df_month_strata['year_month'].isin(test_months)]
-
-    return train_df, val_df, test_df
+    return expanded_samples_df, masks_df, node_masks_df, forecast_masks_df, expanded_strata_df
 
 
 def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
@@ -372,7 +324,6 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
     masks = []
     node_masks = []
     forecast_masks = []
-    prediction_masks = []
 
     for i, df in enumerate(dfs):
         set_name = set_names[i]
@@ -381,7 +332,7 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
         sampled_df, sampled_strata_df = strat_random_sampling(samples_df, samples_strata_df)
 
         # Generate all masked variations
-        expanded_df, mask_df, node_mask_df, forecast_mask_df, prediction_mask_df, expanded_strata_df = generate_masks(sampled_df, sampled_strata_df)
+        expanded_df, mask_df, node_mask_df, forecast_mask_df, expanded_strata_df = generate_masks(sampled_df, sampled_strata_df)
 
         print(f'{set_name} set: {len(expanded_df)} samples (from {len(sampled_df)} base samples)')
         print(f'{set_name} set strata distribution:\n{expanded_strata_df["strata"].value_counts()}')
@@ -390,10 +341,9 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
         masks.append(mask_df)
         node_masks.append(node_mask_df)
         forecast_masks.append(forecast_mask_df)
-        prediction_masks.append(prediction_mask_df)
         strata.append(expanded_strata_df)
 
-    return datasets, strata, list(zip(masks, node_masks, forecast_masks, prediction_masks))
+    return datasets, strata, list(zip(masks, node_masks, forecast_masks))
 
 
 #=================================================================================

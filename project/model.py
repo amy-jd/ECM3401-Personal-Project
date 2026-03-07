@@ -275,15 +275,3 @@ class Model(torch.nn.Module):
         x = self.prediction(x)
         return x
 
-    def compute_loss(self, predictions, targets, prediction_mask, criterion):
-        """
-
-        Parameters:
-            predictions (Tensor): Model output with shape [num_nodes, num_timesteps]
-            targets (Tensor): shape [num_nodes, num_timesteps]
-            prediction_mask (Tensor): 
-            
-        Returns:
-            Tensor: The computed loss over masked node positions only
-        """
-        return criterion(predictions[prediction_mask], targets[prediction_mask])
