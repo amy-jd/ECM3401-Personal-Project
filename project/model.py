@@ -166,12 +166,12 @@ class SpatioTemporalBlock(torch.nn.Module):
         # FCN layers
         self.fcn = nn.Linear(embed_dim, 1)
 
-    def forward(self, x, edge_index, context, node_mask):
+    def forward(self, x, edge_index, context, prediction_mask):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
             edge_index (Tensor): The relationships between nodes
-            node_mask (Tensor): shape [num_nodes], True for masked nodes that need predictions. 
+            prediction_mask (Tensor): shape [num_nodes, num_timesteps] 
 
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
@@ -180,7 +180,8 @@ class SpatioTemporalBlock(torch.nn.Module):
         x = self.spatialBlock(x, edge_index)
 
         # Only run the expensive temporal layers on masked nodes
-        x_masked = x[node_mask]  # [num_masked_nodes, num_timesteps]
+        node_mask = prediction_mask.all(dim=1)
+        x_masked = x[node_mask]  
 
         # Adding an extra dimension so it is (num_nodes, seq_len, 1)
         x_masked = x_masked.unsqueeze(-1)
@@ -260,17 +261,17 @@ class Model(torch.nn.Module):
         self.prediction = PredictionBlock(hidden_channels, output_channels)
         #self.num_st_iterations = num_st_iterations
 
-    def forward(self, x, edge_index, context, node_mask):
+    def forward(self, x, edge_index, context, prediction_mask):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
             edge_index (Tensor): The relationships between nodes
-            node_mask (Tensor): shape [num_nodes], True for masked nodes that need predictions.
+            prediction_mask (Tensor): shape [num_nodes, num_timesteps], True for masked nodes that need predictions.
 
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        x = self.spatio_temporal1(x, edge_index, context, node_mask=node_mask)
+        x = self.spatio_temporal1(x, edge_index, context, prediction_mask)
 
         x = self.prediction(x)
         return x
