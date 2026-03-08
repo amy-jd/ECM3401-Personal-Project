@@ -60,6 +60,7 @@ class WaterFlowDataSet(Dataset):
         mask = torch.ones_like(x)
         node_mask = torch.ones_like(x)
         forecast_mask = torch.ones_like(x)
+        prediction_mask = torch.ones_like(x)
 
         # Randomly mask 1-3 nodes
         num_nodes_to_mask = torch.randint(1, 4, (1,)).item()
