@@ -166,7 +166,7 @@ class SpatioTemporalBlock(torch.nn.Module):
         # FCN layers
         self.fcn = nn.Linear(embed_dim, 1)
 
-    def forward(self, x, edge_index, context, prediction_mask):
+    def forward(self, x_masked, edge_index, context, prediction_mask, masked_only=False):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
@@ -177,11 +177,12 @@ class SpatioTemporalBlock(torch.nn.Module):
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
         # GNN runs on ALL nodes so spatial context propagates to masked nodes
-        x = self.spatialBlock(x, edge_index)
+        x_masked = self.spatialBlock(x_masked, edge_index)
 
         # Only run the expensive temporal layers on masked nodes
-        node_mask = prediction_mask.all(dim=1)
-        x_masked = x[node_mask]  
+        if masked_only:
+            node_mask = prediction_mask.all(dim=1)
+            x_masked = x_masked[node_mask]
 
         # Adding an extra dimension so it is (num_nodes, seq_len, 1)
         x_masked = x_masked.unsqueeze(-1)
@@ -206,9 +207,13 @@ class SpatioTemporalBlock(torch.nn.Module):
         x_masked = x_masked.squeeze(-1)
 
         # Place transformed masked-node outputs back into a full-sized tensor
-        x_out = torch.zeros_like(x)
-        x_out[node_mask] = x_masked
-        return x_out
+
+        if masked_only:
+            x_out = torch.zeros_like(x_masked)
+            x_out[node_mask] = x_masked
+            return x_out
+
+        return x_masked
     
     def generate_attention_mask(self):
         """
@@ -261,7 +266,7 @@ class Model(torch.nn.Module):
         self.prediction = PredictionBlock(hidden_channels, output_channels)
         #self.num_st_iterations = num_st_iterations
 
-    def forward(self, x, edge_index, context, prediction_mask):
+    def forward(self, x, edge_index, context, prediction_mask, masked_only = False):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
@@ -271,7 +276,7 @@ class Model(torch.nn.Module):
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        x = self.spatio_temporal1(x, edge_index, context, prediction_mask)
+        x = self.spatio_temporal1(x, edge_index, context, prediction_mask, masked_only)
 
         x = self.prediction(x)
         return x
