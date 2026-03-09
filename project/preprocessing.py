@@ -7,6 +7,7 @@ import torch
 from sklearn.model_selection import train_test_split
 import hyperparameters as hp
 import random
+from itertools import combinations
 
 pd.set_option('display.max_rows', 500)
 
@@ -156,16 +157,19 @@ def create_samples(df, df_strata, sample_length, set_name, overlap):
     
     return samples_df, samples_strata_df
     
-def strat_random_sampling(windows_df, strata_series):
+
+def strat_random_sampling(windows_df, strata_df):
+    strata_series = strata_df['strata'].apply(lambda arr: arr[0]) 
+
     counts = strata_series.value_counts()
     min_count = counts.min()
 
     sampled_idx = strata_series.groupby(strata_series).sample(n=min_count, random_state=42).index
 
     windows_df_sampled = windows_df.loc[sampled_idx]
-    strata_series_sampled = strata_series.loc[sampled_idx]
+    strata_df_sampled = strata_df.loc[sampled_idx]
 
-    return windows_df_sampled, strata_series_sampled
+    return windows_df_sampled, strata_df_sampled
 
 
 def train_val_test_split(windows_df_sampled, strata_series_sampled):
@@ -232,6 +236,65 @@ def month_based_train_val_test_split(flowdata_df, train_val_test_ratios):
     return train_df, val_df, test_df
 
 
+def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
+
+    rows = []
+    strata = []
+    input_masks = []
+    prediction_masks = []
+
+    sensor_cols = hp.SENSOR_COLS
+    num_nodes = len(sensor_cols)
+    sample_length = hp.TOTAL_WINDOW
+
+    # Generate all combinations of 1-3 nodes to mask
+    node_combos = []
+    for num_masked in range(1, 4):
+        mask_combinations = combinations(range(num_nodes), num_masked)
+        for combo in mask_combinations:
+            node_combos.append(combo)
+
+    total_variations = len(node_combos) * len(df)
+    print(f"Generating {len(node_combos)} masked variations per sample " f"({len(df)} samples, {total_variations} total)")
+
+    for idx in range(len(df)):
+        sample_row = df.iloc[idx]
+        strata_row = strata_df.iloc[idx]
+
+        # Go through each combo of node mask
+        for combo in node_combos:
+            masked_node_set = set(combo)
+
+            input_mask_entry = {}
+            prediction_mask_entry = {}
+            # Go through each column in the sample
+            for col_idx, col in enumerate(sensor_cols):
+                input_mask = np.ones(sample_length)
+                prediction_mask = np.ones(sample_length)
+
+                # Mask selected nodes (entire time series)
+                if col_idx in masked_node_set:
+                    input_mask[:] = 0.0
+                    prediction_mask[-forecast_window:] = 0.0
+                else:
+                    input_mask[-forecast_window:] = 0.0
+
+                input_mask_entry[col] = input_mask
+                prediction_mask_entry[col] = prediction_mask
+
+            rows.append(sample_row.to_dict())
+            strata.append(strata_row.to_dict())
+            input_masks.append(input_mask_entry)
+            prediction_masks.append(prediction_mask_entry)
+
+    rows_df = pd.DataFrame(rows, columns=sensor_cols).reset_index(drop=True)
+    input_masks_df = pd.DataFrame(input_masks, columns=sensor_cols).reset_index(drop=True)
+    prediction_masks_df = pd.DataFrame(prediction_masks, columns=sensor_cols).reset_index(drop=True)
+    strata_df = pd.DataFrame(strata, columns=strata_df.columns).reset_index(drop=True)
+    
+    return rows_df, strata_df, input_masks_df, prediction_masks_df
+
+
 def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
 
     # Reading in the flow data file
@@ -259,6 +322,8 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
 
     datasets = []
     strata = []
+    input_masks = []
+    prediction_masks = []
 
     train_df, val_df, test_df = month_based_train_val_test_split(df_flowdata, hp.TRAIN_VAL_TEST_SPLIT)
     dfs = [train_df, val_df, test_df]
@@ -270,12 +335,17 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
         set_name = set_names[i]
         strata_df = assign_strata(df)
         samples_df, samples_strata_df = create_samples(df, strata_df, window_size, set_name, overlap=overlap[i])
+        sampled_df, sampled_strata_df = strat_random_sampling(samples_df, samples_strata_df)
 
-        datasets.append(samples_df)
-        strata.append(samples_strata_df)
+        expanded_df, expanded_strata_df, input_masks_df, prediction_masks_df,  = generate_masks(sampled_df, sampled_strata_df)
+
+        datasets.append(expanded_df)
+        input_masks.append(input_masks_df)
+        prediction_masks.append(prediction_masks_df)
+        strata.append(expanded_strata_df)
 
    
-    return datasets, strata
+    return datasets, strata, list(zip(input_masks, prediction_masks))
 
 
 #=================================================================================
