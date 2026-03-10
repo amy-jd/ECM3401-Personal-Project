@@ -10,7 +10,7 @@ class WaterFlowDataSet(Dataset):
         self.df = df
         self.df_strata = df_strata
 
-        self.input_masks_df, self.prediction_masks_df = df_masks
+        #self.input_masks_df, self.prediction_masks_df = df_masks
 
         self.edge_index = edge_index
         self.edge_weight = edge_weight
