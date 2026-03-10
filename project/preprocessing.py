@@ -452,3 +452,16 @@ def preprocess_graph(path):
 # Weather data preprocessing
 #=================================================================================
 
+def load_in_weather_data(path):
+    return 1
+
+def get_weather_samples(weather_df, flowdata_samples_df):
+    return 1
+
+def preprocess_weather_data(path, flowdata_samples_df):
+
+    weather_df = load_in_weather_data(path)
+
+    weather_samples_df = get_weather_samples(weather_df, flowdata_samples_df)
+
+    return weather_samples_df
