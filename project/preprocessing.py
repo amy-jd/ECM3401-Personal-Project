@@ -415,14 +415,3 @@ def load_in_weather_data(path, region_idx=16):
     df = df[df.index >= cut_off_time]
 
     return df
-
-def get_weather_samples(weather_df, flowdata_samples_df):
-    return 1
-
-def preprocess_weather_data(path, flowdata_samples_df):
-
-    weather_df = load_in_weather_data(path)
-
-    weather_samples_df = get_weather_samples(weather_df, flowdata_samples_df)
-
-    return weather_samples_df
