@@ -126,7 +126,7 @@ class TemporalTransformer(torch.nn.Module):
 class TemporalContextEmbedding(torch.nn.Module):
     def __init__(self, context_dim, embed_dim):
         super().__init__()
-        self.time_embedding = nn.Embedding(6,8)
+        self.time_embedding = nn.Embedding(6,8) # remove hard coding at some point
         self.week_Embedding = nn.Embedding(2,4)
         self.season_embedding = nn.Embedding(4,6)
 
@@ -166,7 +166,7 @@ class SpatioTemporalBlock(torch.nn.Module):
         # FCN layers
         self.fcn = nn.Linear(embed_dim, 1)
 
-    def forward(self, x_masked, edge_index, context, prediction_mask, masked_only=False):
+    def forward(self, x_masked, edge_index, temporal_context, weather_context, prediction_mask, masked_only=False):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
@@ -191,15 +191,15 @@ class SpatioTemporalBlock(torch.nn.Module):
         # Adding positional encoding so the temporal order is known by the model
         x_masked = self.positional_encoding(x_masked) 
 
-        temporal_context = self.temporal_context_embedding(context)
+        temporal_context_embedding = self.temporal_context_embedding(temporal_context)
 
         # Adding in the temporal context
-        x_masked = x_masked + temporal_context
+        x_masked = x_masked + temporal_context_embedding
 
         # Creating an attention mask, so that the model cannot see future time steps
         attention_mask = self.generate_attention_mask() 
 
-        x_masked = self.temporalBlock(x_masked, attention_mask, context)
+        x_masked = self.temporalBlock(x_masked, attention_mask, temporal_context)
 
         # Reducing the feature dimensions back to 1
         x_masked = self.fcn(x_masked)
@@ -266,7 +266,7 @@ class Model(torch.nn.Module):
         self.prediction = PredictionBlock(hidden_channels, output_channels)
         #self.num_st_iterations = num_st_iterations
 
-    def forward(self, x, edge_index, context, prediction_mask, masked_only = False):
+    def forward(self, x, edge_index, temporal_context, weather_context, prediction_mask, masked_only = False):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
@@ -276,7 +276,7 @@ class Model(torch.nn.Module):
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        x = self.spatio_temporal1(x, edge_index, context, prediction_mask, masked_only)
+        x = self.spatio_temporal1(x, edge_index, temporal_context, weather_context, prediction_mask, masked_only)
 
         x = self.prediction(x)
         return x
