@@ -6,9 +6,9 @@ import hyperparameters as hp
 
 class WaterFlowDataSet(Dataset):
 
-    def __init__(self, df, df_strata, edge_index, edge_weight, forecast_window=0, generate_masks=True, masks=None):
+    def __init__(self, df, context_df, edge_index, edge_weight, forecast_window=0, generate_masks=True, masks=None):
         self.df = df
-        self.df_strata = df_strata
+        self.context_df = context_df
 
         #self.input_masks_df, self.prediction_masks_df = df_masks
 
@@ -55,8 +55,14 @@ class WaterFlowDataSet(Dataset):
         #edge_index_tensor = torch.tensor(self.edge_index)
         #edge_weight_tensor = torch.tensor(self.edge_weight, dtype=torch.long)
 
-        strata_row = self.df_strata.iloc[idx]
-        context_tensor = self.generate_time_context_tensor(strata_row)
+        context_row = self.context_df.iloc[idx]
+
+        time_context = context_row[['part_of_day', 'part_of_week', 'part_of_year']]
+        time_context_tensor = self.generate_context_tensor(time_context, context_type='strata')
+
+        weather_context = context_row[hp.WEATHER_COLS]
+        weather_context_tensor = self.generate_context_tensor(weather_context, context_type='weather')
+
 
         data = Data(
             x = x_masked,
@@ -65,7 +71,8 @@ class WaterFlowDataSet(Dataset):
             prediction_mask = boolean_prediction_mask,            
             edge_index = self.edge_index,
             edge_weight = self.edge_weight,
-            context = context_tensor
+            time_context = time_context_tensor,
+            weather_context = weather_context_tensor
         )
         return data
     
@@ -99,27 +106,36 @@ class WaterFlowDataSet(Dataset):
 
         return mask, prediction_mask
     
-    def generate_time_context_tensor(self, strata_row):
+    def generate_context_tensor(self, row, context_type):
         """
         Parameters:
             strata_row (Series): The strata for a given sample, which specifies its time of day, day of week and season
 
         Returns:
-            Tensor: A tensor representing the time context of the sample, which can be used as additional input to the model
+            Tensor: A tensor representing the time context of the sample, with shape [num_strata_types, num_timesteps]
         """
 
         all_context = []
 
-        for strata in ['part_of_day', 'part_of_week', 'part_of_year']:
+        # iterate through each column / strata type in the df
+        for col in row:
             context = []
-            for val in strata_row[strata]:
-                val_index = hp.STRATA_TO_INDEX[strata][val]
-                context.append(val_index)
+            # iterate through each value in a sample strata
+            for val in row[col]:
+                if context_type == 'strata':
+                    # convert from string to index, making it easier for the model to process
+                    val_index = hp.STRATA_TO_INDEX[col][val]
+                    context.append(val_index)
+                else:
+                    context.append(val)
+
             all_context.append(context)
 
         context_tensor = torch.tensor(all_context, dtype=torch.long)
 
         return context_tensor
+    
+
             
     
 
