@@ -166,54 +166,43 @@ class SpatioTemporalBlock(torch.nn.Module):
         # FCN layers
         self.fcn = nn.Linear(embed_dim, 1)
 
-    def forward(self, x_masked, edge_index, temporal_context, weather_context, prediction_mask, masked_only=False):
+    def forward(self, x, edge_index, temporal_context, weather_context):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
             edge_index (Tensor): The relationships between nodes
-            prediction_mask (Tensor): shape [num_nodes, num_timesteps] 
 
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        # GNN runs on ALL nodes so spatial context propagates to masked nodes
-        x_masked = self.spatialBlock(x_masked, edge_index)
+        x = self.spatialBlock(x, edge_index)
 
-        # Only run the expensive temporal layers on masked nodes
-        if masked_only:
-            node_mask = prediction_mask.all(dim=1)
-            x_masked = x_masked[node_mask]
-
-        # Adding an extra dimension so it is (num_nodes, seq_len, 1)
-        x_masked = x_masked.unsqueeze(-1)
+        # Adding an extra dimension so it is (batch_size, seq_len, 1)
+        x = x.unsqueeze(-1)
         # Increasing the feature dimensions from 1 to embed_dim
-        x_masked = self.input_embedding(x_masked) 
+        x = self.input_embedding(x) 
         # Adding positional encoding so the temporal order is known by the model
-        x_masked = self.positional_encoding(x_masked) 
+        x = self.positional_encoding(x) 
 
         temporal_context_embedding = self.temporal_context_embedding(temporal_context)
 
-        # Adding in the temporal context
-        x_masked = x_masked + temporal_context_embedding
+        # Adding in the residual connection 
+        x = x + temporal_context_embedding
 
         # Creating an attention mask, so that the model cannot see future time steps
         attention_mask = self.generate_attention_mask() 
 
-        x_masked = self.temporalBlock(x_masked, attention_mask, temporal_context)
+        x = self.temporalBlock(x, attention_mask, temporal_context_embedding)
+
+        # Adding in the residual connection 
+        #x = x + temporal_context
 
         # Reducing the feature dimensions back to 1
-        x_masked = self.fcn(x_masked)
-        # Removing the last dimension to return it to (num_nodes, seq_len)
-        x_masked = x_masked.squeeze(-1)
+        x = self.fcn(x)
+        # Removing the last dimensions to return it to (batch_size, seq_len)
+        x = x.squeeze(-1)
 
-        # Place transformed masked-node outputs back into a full-sized tensor
-
-        if masked_only:
-            x_out = torch.zeros_like(x_masked)
-            x_out[node_mask] = x_masked
-            return x_out
-
-        return x_masked
+        return x
     
     def generate_attention_mask(self):
         """
@@ -266,18 +255,18 @@ class Model(torch.nn.Module):
         self.prediction = PredictionBlock(hidden_channels, output_channels)
         #self.num_st_iterations = num_st_iterations
 
-    def forward(self, x, edge_index, temporal_context, weather_context, prediction_mask, masked_only = False):
+    def forward(self, x, edge_index, temporal_context, weather_context):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
             edge_index (Tensor): The relationships between nodes
-            prediction_mask (Tensor): shape [num_nodes, num_timesteps], True for masked nodes that need predictions.
 
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        x = self.spatio_temporal1(x, edge_index, temporal_context, weather_context, prediction_mask, masked_only)
+        x = self.spatio_temporal1(x, edge_index, temporal_context, weather_context) # i can do this a more fancy way in the future, using nn.modulelist 
 
         x = self.prediction(x)
         return x
+    
 
