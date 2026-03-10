@@ -24,6 +24,7 @@ EMBED_DIM = 32
 
 FLOWDATA_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Dataset\FlowData_for_SubsetGraph_12_with_7SensoredPipes.csv"
 SUBSETGRAPH_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Dataset\SubsetGraph_12_with_7SensoredPipes.csv"
+WEATHERDATA_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Dataset\rainfall_hadukgrid_uk_region_day_18910101-20241231.nc"
 
 TRAIN_VAL_TEST_SPLIT = [0.7, 0.15, 0.15]
 

@@ -9,6 +9,8 @@ from itertools import combinations
 import hyperparameters as hp
 import random
 from itertools import combinations
+import xarray as xr
+
 
 pd.set_option('display.max_rows', 500)
 
@@ -113,7 +115,7 @@ def assign_strata(df):
     return strata_df
 
 
-def create_samples(df, df_strata, sample_length, set_name, overlap):
+def create_samples(df, df_context, sample_length, set_name, overlap):
     """
     Creates samples of the data with a given length and overlap.
 
@@ -124,7 +126,7 @@ def create_samples(df, df_strata, sample_length, set_name, overlap):
     """
 
     samples_df = pd.DataFrame(columns=hp.SENSOR_COLS)
-    samples_strata_df = pd.DataFrame(columns=df_strata.columns, index=samples_df.index)
+    samples_context_df = pd.DataFrame(columns=df_context.columns, index=samples_df.index)
 
     # Find all the gaps in the data (where there are missing time steps / it is not continuous)
     gap_mask = df.index.to_series().diff() > pd.Timedelta(minutes=15)
@@ -158,7 +160,7 @@ def create_samples(df, df_strata, sample_length, set_name, overlap):
         # Get rid of the segment_id column
         segment = segment.drop(columns='segment_id')
 
-        strata_segment = df_strata.loc[segment.index]
+        context_segment = df_context.loc[segment.index]
 
         num_samples = 0
         i = 0
@@ -166,27 +168,25 @@ def create_samples(df, df_strata, sample_length, set_name, overlap):
             index = len(samples_df)
 
             sample_row = {}
-            strata_row = {}
+            context_row = {}
             sample = segment[i:i + sample_length]
-            strata_sample = strata_segment[i:i + sample_length]
+            context_sample = context_segment[i:i + sample_length]
 
             for col in hp.SENSOR_COLS:
                 sample_row[col] = sample[col].values
 
-            for strata_col in strata_segment.columns:
-                strata_row[strata_col] = strata_sample[strata_col].values
+            for context_col in context_segment.columns:
+                context_row[context_col] = context_sample[context_col].values
 
-            samples_df.loc[sample.index] = sample_row
-            samples_strata_df.loc[sample.index] = strata_row
+            samples_df.loc[index] = sample_row
+            samples_context_df.loc[index] = context_row
 
             i += step
             num_samples += 1
         
         print(f'Created {num_samples}')
-        
-
     
-    return samples_df, samples_strata_df
+    return samples_df, samples_context_df
     
 
 def strat_random_sampling(windows_df, strata_df):
@@ -201,10 +201,6 @@ def strat_random_sampling(windows_df, strata_df):
     strata_df_sampled = strata_df.loc[sampled_idx]
 
     return windows_df_sampled, strata_df_sampled
-
-
-
-
 
 def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
 
@@ -290,8 +286,10 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
     # Applying a transformation
     df_flowdata = df_flowdata.apply(np.log1p)
 
-    datasets = []
-    strata = []
+    weather_context_df = load_in_weather_data(hp.WEATHERDATA_PATH, region_idx=16)
+
+    flow_datasets = []
+    context_datasets = []
     input_masks = []
     prediction_masks = []
 
@@ -305,20 +303,23 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
     for i, df in enumerate(dfs):
         set_name = set_names[i]
         strata_df = assign_strata(df)
-        samples_df, samples_strata_df = create_samples(df, strata_df, window_size, set_name, overlap=overlap[i])
-        sampled_df, sampled_strata_df = strat_random_sampling(samples_df, samples_strata_df)
 
-        expanded_df, expanded_strata_df, input_masks_df, prediction_masks_df,  = generate_masks(sampled_df, sampled_strata_df)
+        context_df = strata_df.join(weather_context_df, how='left')
 
-        datasets.append(expanded_df)
+        samples_df, samples_context_df = create_samples(df, context_df, window_size, set_name, overlap=overlap[i])
+        sampled_df, sampled_context_df = strat_random_sampling(samples_df, samples_context_df)
+
+        expanded_flow_df, expanded_context_df, input_masks_df, prediction_masks_df,  = generate_masks(sampled_df, sampled_context_df)
+
+        flow_datasets.append(expanded_flow_df)
         input_masks.append(input_masks_df)
         prediction_masks.append(prediction_masks_df)
-        strata.append(expanded_strata_df)
+        context_datasets.append(expanded_context_df)
+
+        print(f'strata df length: {len(strata_df)}, context df length: {len(context_df)}')
 
    
-    return datasets, strata, list(zip(input_masks, prediction_masks))
-
-    return datasets, strata, list(zip(input_masks, prediction_masks))
+    return flow_datasets, context_datasets, list(zip(input_masks, prediction_masks))
 #=================================================================================
 # Graph preprocessing
 #=================================================================================
@@ -392,8 +393,28 @@ def preprocess_graph(path):
 # Weather data preprocessing
 #=================================================================================
 
-def load_in_weather_data(path):
-    return 1
+def load_in_weather_data(path, region_idx=16):
+    ds = xr.open_dataset(path, engine='netcdf4')
+
+    start_date = '2020-12-31'
+    end_date = '2024-09-29'
+
+    ds_subset = ds.sel(region=region_idx, time=slice(start_date, end_date))
+
+    df = ds_subset.to_dataframe().reset_index()
+
+
+    df['time'] = pd.to_datetime(df['time'])
+    df = df.set_index('time')
+    df = df.drop(['region', 'geo_region', 'time_bnds', 'bnds'], axis=1)
+    df = df.drop_duplicates()
+
+    df = df.resample("15min").ffill()
+
+    cut_off_time = df.index.min() + pd.Timedelta(hours=12)
+    df = df[df.index >= cut_off_time]
+
+    return df
 
 def get_weather_samples(weather_df, flowdata_samples_df):
     return 1
