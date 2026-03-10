@@ -70,10 +70,12 @@ class WaterFlowDataSet(Dataset):
         return data
     
     
-    def generate_mask_tensors(self, idx):
+    def generate_mask(self, x):
         """
+        Generates a mask for the input data, where certain nodes and future time steps are masked.
+
         Parameters:
-            idx (int): The index of the sample to generate masks for
+            x (Tensor): The input tensor of shape [num_nodes, num_timesteps]
 
         Returns:
             Tensor: A mask tensor of the same shape as x, where masked positions are 0 and unmasked positions are 1
