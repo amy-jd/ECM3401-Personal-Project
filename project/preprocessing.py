@@ -72,6 +72,7 @@ def month_based_train_val_test_split(flowdata_df, train_val_test_ratios):
 
     return train_df, val_df, test_df
 
+
 def assign_strata(df):
     """
     Takes a timeseries dataframe, and creates a corresponding series specificying each row's strata.
@@ -175,8 +176,8 @@ def create_samples(df, df_strata, sample_length, set_name, overlap):
             for strata_col in strata_segment.columns:
                 strata_row[strata_col] = strata_sample[strata_col].values
 
-            samples_df.loc[index] = sample_row
-            samples_strata_df.loc[index] = strata_row
+            samples_df.loc[sample.index] = sample_row
+            samples_strata_df.loc[sample.index] = strata_row
 
             i += step
             num_samples += 1
@@ -202,68 +203,7 @@ def strat_random_sampling(windows_df, strata_df):
     return windows_df_sampled, strata_df_sampled
 
 
-def train_val_test_split(windows_df_sampled, strata_series_sampled):
 
-    train_size = hp.TRAIN_VAL_TEST_SPLIT[0]
-    temp_size = 1 - train_size
-    val_size = hp.TRAIN_VAL_TEST_SPLIT[1] / temp_size
-    test_size = hp.TRAIN_VAL_TEST_SPLIT[2] / temp_size
-
-    train_idx, temp_idx = train_test_split(
-        windows_df_sampled.index,
-        test_size=temp_size,
-        stratify=strata_series_sampled.loc[windows_df_sampled.index],
-        random_state=42
-    )
-
-    train_df = windows_df_sampled.loc[train_idx]
-    train_strata = strata_series_sampled.loc[train_idx]
-
-    val_idx, test_idx = train_test_split(
-        temp_idx,
-        test_size=test_size,
-        stratify=strata_series_sampled.loc[temp_idx],
-        random_state=42
-    )
-
-    val_df = windows_df_sampled.loc[val_idx]
-    val_strata = strata_series_sampled.loc[val_idx]
-
-    test_df = windows_df_sampled.loc[test_idx]
-    test_strata = strata_series_sampled.loc[test_idx]
-
-    
-    return [train_df, val_df, test_df], [train_strata, val_strata, test_strata]
-
-
-def month_based_train_val_test_split(flowdata_df, train_val_test_ratios):
-    # get all the months
-    df_month_strata = pd.DataFrame(index=flowdata_df.index)
-    # Use the index instead of a 'timestamp' column
-    df_month_strata['year_month'] = flowdata_df.index.to_period('M')
-    print(f"Rows per month: {df_month_strata['year_month'].value_counts().sort_index()}")
-
-    months = df_month_strata['year_month'].unique()
-    random.shuffle(months)
-
-    # assign each month to a set
-    num_months = df_month_strata['year_month'].nunique()
-    train_ratio, val_ratio, test_ratio = train_val_test_ratios
-
-    num_months_train = int(num_months * train_ratio)
-    num_months_val = int(num_months * val_ratio)
-    num_months_test = num_months - num_months_train - num_months_val
-
-    train_months = months[:num_months_train]
-    val_months = months[num_months_train:num_months_train + num_months_val]
-    test_months = months[num_months_train + num_months_val:]
-
-    # split the data into the sets
-    train_df = flowdata_df[df_month_strata['year_month'].isin(train_months)]
-    val_df = flowdata_df[df_month_strata['year_month'].isin(val_months)]
-    test_df = flowdata_df[df_month_strata['year_month'].isin(test_months)]
-
-    return train_df, val_df, test_df
 
 
 def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
