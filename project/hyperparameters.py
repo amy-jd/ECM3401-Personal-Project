@@ -14,6 +14,8 @@ SENSOR_DMA_TO_ID = {
     '1994': 5,
 }
 
+WEATHER_COLS = ['rainfall']
+
 LEARNING_RATE = 0.001
 NB_EPOCHS = 10
 BATCH_SIZE = 16
