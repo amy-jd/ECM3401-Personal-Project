@@ -15,6 +15,8 @@ SENSOR_DMA_TO_ID = {
 }
 
 WEATHER_COLS = ['rainfall']
+TEMPORAL_COLS = ['part_of_day', 'part_of_week', 'part_of_year']
+TEMPORAL_EMBEDDING_DIMENSIONS = [6, 2, 4]
 
 LEARNING_RATE = 0.001
 NB_EPOCHS = 10

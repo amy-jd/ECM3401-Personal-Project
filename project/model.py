@@ -124,27 +124,22 @@ class TemporalTransformer(torch.nn.Module):
 
 
 class TemporalContextEmbedding(torch.nn.Module):
-    def __init__(self, context_dim, embed_dim):
+    def __init__(self, context_dim):
         super().__init__()
-        self.time_embedding = nn.Embedding(6,8) # remove hard coding at some point
+
+        self.time_embedding = nn.Embedding(6,8) 
         self.week_Embedding = nn.Embedding(2,4)
         self.season_embedding = nn.Embedding(4,6)
 
-        self.temporal_proj = nn.Linear(8 + 4 + 6, embed_dim)
-
     def forward(self, context):
-        time_of_day = self.time_embedding(context[0])
-        day_of_week = self.week_Embedding(context[1])
-        season = self.season_embedding(context[2])
+        time_of_day = self.time_embedding(context[..., 0])
+        day_of_week = self.week_Embedding(context[..., 1])
+        season = self.season_embedding(context[..., 2])
 
-        all_context = torch.cat((time_of_day, day_of_week, season), dim=-1)
+        context_embeddings = torch.cat((time_of_day, day_of_week, season), dim=-1)
 
-        context_embedded = self.temporal_proj(all_context)
-
-        # Adding an extra dimension so it is (1, seq_len, embed_dim) and can be added to the input embedding
-        context_embedded = context_embedded.unsqueeze(0)
-
-        return context_embedded
+        return context_embeddings
+    
 
 class SpatioTemporalBlock(torch.nn.Module):
     def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, context_dim):
@@ -153,8 +148,6 @@ class SpatioTemporalBlock(torch.nn.Module):
         self.forecast_window = forecast_window
         self.total_window = self.context_window + self.forecast_window
 
-        self.temporal_context_embedding = TemporalContextEmbedding(context_dim, embed_dim)
-        
         self.spatialBlock = GNN(input_channels, hidden_channels, output_channels)
 
         # Preprocessing layers
@@ -166,6 +159,17 @@ class SpatioTemporalBlock(torch.nn.Module):
         # FCN layers
         self.fcn = nn.Linear(embed_dim, 1)
 
+        #---------------------contextual input ----------------------
+
+        self.weather_context_dimensions = len(hp.WEATHER_COLS)
+        self.weather_projection = nn.Linear(self.weather_context_dimensions, embed_dim)
+
+        self.temporal_context_embedding = TemporalContextEmbedding(context_dim)
+        self.temporal_context_dimensions = sum(context_dim)
+        self.temporal_context_projection = nn.Linear(18, embed_dim)
+
+
+
     def forward(self, x, edge_index, temporal_context, weather_context):
         """
         Parameters:
@@ -175,31 +179,46 @@ class SpatioTemporalBlock(torch.nn.Module):
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
+  
+        #-----------------------Preparing contextual input----------------------
+        weather_context = self.weather_projection(weather_context) # projecting the weather context to the same dimensions as x
+
+        temporal_context = self.temporal_context_embedding(temporal_context) # converting index numbers to embeddings
+        temporal_context = self.temporal_context_projection(temporal_context) # projecting the temporal context to the same dimensions as x
+
+        #----------------------------Spatial block----------------------------
         x = self.spatialBlock(x, edge_index)
 
-        # Adding an extra dimension so it is (batch_size, seq_len, 1)
+    
+        #---------------------Reshaping for temporal block----------------------------
+        # Adding an extra dimension so it is [batch_size*num_nodes, num_timesteps, 1]
         x = x.unsqueeze(-1)
-        # Increasing the feature dimensions from 1 to embed_dim
+
+        # Increasing the feature dimensions from 1 to embed_dim, so it is [batch_size*num_nodes, num_timesteps, embed_dim]
         x = self.input_embedding(x) 
         # Adding positional encoding so the temporal order is known by the model
         x = self.positional_encoding(x) 
 
-        temporal_context_embedding = self.temporal_context_embedding(temporal_context)
+        # Adding in the residual connection
+        x = x + temporal_context
 
-        # Adding in the residual connection 
-        x = x + temporal_context_embedding
+        #print('x is:', x.shape)
+        #print('weather_context is:', weather_context.shape)
+        x = x + weather_context
 
+        #----------------------Temporal block----------------------------
         # Creating an attention mask, so that the model cannot see future time steps
         attention_mask = self.generate_attention_mask() 
 
-        x = self.temporalBlock(x, attention_mask, temporal_context_embedding)
+        x = self.temporalBlock(x, attention_mask, temporal_context)
 
         # Adding in the residual connection 
         #x = x + temporal_context
 
-        # Reducing the feature dimensions back to 1
+        #-------------------------Reshaping for MLP----------------------------
+        # Reducing the feature dimensions back to 1, so it is [batch_size*num_nodes, num_timesteps, 1]
         x = self.fcn(x)
-        # Removing the last dimensions to return it to (batch_size, seq_len)
+        # Removing the last dimensions to return it to [batch_size*num_nodes, num_timesteps]
         x = x.squeeze(-1)
 
         return x
@@ -249,7 +268,7 @@ class PredictionBlock(torch.nn.Module):
         return x
 
 class Model(torch.nn.Module):
-    def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, context_dim):
+    def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, context_dim = hp.TEMPORAL_EMBEDDING_DIMENSIONS):
         super().__init__()
         self.spatio_temporal1 = SpatioTemporalBlock(input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, context_dim)
         self.prediction = PredictionBlock(hidden_channels, output_channels)

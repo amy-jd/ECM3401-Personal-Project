@@ -10,6 +10,8 @@ import hyperparameters as hp
 import random
 from itertools import combinations
 import xarray as xr
+from sklearn.preprocessing import MinMaxScaler
+
 
 
 pd.set_option('display.max_rows', 500)
@@ -287,6 +289,7 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
     df_flowdata = df_flowdata.apply(np.log1p)
 
     weather_context_df = load_in_weather_data(hp.WEATHERDATA_PATH, region_idx=16)
+    print(f'weather context df: {weather_context_df.head()}')
 
     flow_datasets = []
     context_datasets = []
@@ -305,6 +308,10 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
         strata_df = assign_strata(df)
 
         context_df = strata_df.join(weather_context_df, how='left')
+        print(f'context df: {context_df.head()}')
+        context_df = normalise_weather_data(context_df) # doing this after train-val-test split to avoid data leakage
+        print(f'context df after normalisation: {context_df.head()}')
+
 
         samples_df, samples_context_df = create_samples(df, context_df, window_size, set_name, overlap=overlap[i])
         sampled_df, sampled_context_df = strat_random_sampling(samples_df, samples_context_df)
@@ -396,7 +403,7 @@ def preprocess_graph(path):
 def load_in_weather_data(path, region_idx=16):
     ds = xr.open_dataset(path, engine='netcdf4')
 
-    start_date = '2020-12-31'
+    start_date = '2019-12-31'
     end_date = '2024-09-29'
 
     ds_subset = ds.sel(region=region_idx, time=slice(start_date, end_date))
@@ -404,8 +411,10 @@ def load_in_weather_data(path, region_idx=16):
     df = ds_subset.to_dataframe().reset_index()
 
 
-    df['time'] = pd.to_datetime(df['time'])
+    df['time'] = pd.to_datetime(df['time'], format='%d/%m/%Y %H:%M')
     df = df.set_index('time')
+
+
     df = df.drop(['region', 'geo_region', 'time_bnds', 'bnds'], axis=1)
     df = df.drop_duplicates()
 
@@ -413,5 +422,13 @@ def load_in_weather_data(path, region_idx=16):
 
     cut_off_time = df.index.min() + pd.Timedelta(hours=12)
     df = df[df.index >= cut_off_time]
+
+    return df
+
+def normalise_weather_data(df):
+    scaler = MinMaxScaler()
+
+    for col in hp.WEATHER_COLS:
+        df[col] = scaler.fit_transform(df[[col]])
 
     return df

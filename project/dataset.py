@@ -58,21 +58,22 @@ class WaterFlowDataSet(Dataset):
         context_row = self.context_df.iloc[idx]
 
         time_context = context_row[['part_of_day', 'part_of_week', 'part_of_year']]
-        time_context_tensor = self.generate_context_tensor(time_context, context_type='strata')
+        time_context_tensor = self.generate_context_tensor(time_context, context_type='strata', data_type=torch.long)
 
         weather_context = context_row[hp.WEATHER_COLS]
-        weather_context_tensor = self.generate_context_tensor(weather_context, context_type='weather')
+        weather_context_tensor = self.generate_context_tensor(weather_context, context_type='weather', data_type=torch.float)
+        weather_context_tensor = weather_context_tensor * input_mask.unsqueeze(-1)
 
 
         data = Data(
-            x = x_masked,
+            x = x_masked, # (num_nodes, num_timesteps) = (6,430)
             y = x,       
             input_mask = boolean_mask,
             prediction_mask = boolean_prediction_mask,            
             edge_index = self.edge_index,
             edge_weight = self.edge_weight,
-            time_context = time_context_tensor,
-            weather_context = weather_context_tensor
+            temporal_context = time_context_tensor, 
+            weather_context = weather_context_tensor  
         )
         return data
     
@@ -106,7 +107,7 @@ class WaterFlowDataSet(Dataset):
 
         return mask, prediction_mask
     
-    def generate_context_tensor(self, row, context_type):
+    def generate_context_tensor(self, row, context_type, data_type):
         """
         Parameters:
             strata_row (Series): The strata for a given sample, which specifies its time of day, day of week and season
@@ -118,20 +119,24 @@ class WaterFlowDataSet(Dataset):
         all_context = []
 
         # iterate through each column / strata type in the df
-        for col in row:
+        for col_name in row.index:
             context = []
             # iterate through each value in a sample strata
-            for val in row[col]:
+            for val in row[col_name]:
                 if context_type == 'strata':
                     # convert from string to index, making it easier for the model to process
-                    val_index = hp.STRATA_TO_INDEX[col][val]
+                    val_index = hp.STRATA_TO_INDEX[col_name][val]
                     context.append(val_index)
                 else:
                     context.append(val)
 
             all_context.append(context)
 
-        context_tensor = torch.tensor(all_context, dtype=torch.long)
+        context_array = np.array(all_context).T # Transpose to get shape [num_timesteps, num_strata_types]
+
+        context_tensor = torch.tensor(context_array, dtype=data_type) # Convert to tensor with shape [num_timesteps, num_strata_types]
+ 
+        context_tensor = context_tensor.unsqueeze(0).repeat(self.N, 1, 1) # Reshape to [num_nodes, num_timesteps, num_strata_types] by adding a node dimension and repeating the context for each node
 
         return context_tensor
     
