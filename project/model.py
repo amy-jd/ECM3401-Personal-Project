@@ -208,11 +208,11 @@ class SpatioTemporalBlock(torch.nn.Module):
         x = self.positional_encoding(x) 
 
         # Adding in the residual connection
-        x = x + temporal_context
+        #x = x + temporal_context
 
         #print('x is:', x.shape)
         #print('weather_context is:', weather_context.shape)
-        x = x + weather_context
+        #x = x + weather_context
 
         #----------------------Temporal block----------------------------
         # Creating an attention mask, so that the model cannot see future time steps
