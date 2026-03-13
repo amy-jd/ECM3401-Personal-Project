@@ -21,8 +21,12 @@ TEMPORAL_EMBEDDING_DIMENSIONS = [6, 2, 4]
 LEARNING_RATE = 0.001
 NB_EPOCHS = 10
 BATCH_SIZE = 16
+EARLY_STOPPING_THRESHOLD = 3
+MODEL_SAVE_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Code\test\ECM3401-Personal-Project\project\best_model.pth"
 
 EMBED_DIM = 32
+
+GNN_DROPOUT = 0.01
 
 FLOWDATA_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Dataset\FlowData_for_SubsetGraph_12_with_7SensoredPipes.csv"
 SUBSETGRAPH_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Dataset\SubsetGraph_12_with_7SensoredPipes.csv"

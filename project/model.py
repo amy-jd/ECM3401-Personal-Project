@@ -5,12 +5,14 @@ from torch_geometric.nn import GCNConv
 from torch import nn, Tensor
 
 class GNN(torch.nn.Module):
-    def __init__ (self, input_channels, hidden_channels, output_channels):
+    def __init__ (self, input_channels, hidden_channels, output_channels, dropout = hp.GNN_DROPOUT):
         super().__init__()
         self.conv1 = GCNConv(input_channels, hidden_channels)
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
         self.conv3 = GCNConv(hidden_channels, hidden_channels)
         self.conv4 = GCNConv(hidden_channels, output_channels)
+
+        self.dropout = nn.Dropout(0)
  
     def forward(self, x, edge_index):
         """
@@ -23,10 +25,16 @@ class GNN(torch.nn.Module):
         """
         x = self.conv1(x, edge_index)
         x = torch.relu(x) #
+        x = self.dropout(x)
+
         x = self.conv2(x, edge_index)
         x = torch.relu(x)
+        x = self.dropout(x)
+
         x = self.conv3(x, edge_index)
         x = torch.relu(x)
+        x = self.dropout(x)
+
         x = self.conv4(x, edge_index)
         x = torch.relu(x)
 
