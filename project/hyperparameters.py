@@ -18,9 +18,12 @@ WEATHER_COLS = ['rainfall']
 TEMPORAL_COLS = ['part_of_day', 'part_of_week', 'part_of_year']
 TEMPORAL_EMBEDDING_DIMENSIONS = [6, 2, 4]
 
-LEARNING_RATE = 0.0005
-NB_EPOCHS = 55
-BATCH_SIZE = 32
+LEARNING_RATE_SPATIAL = 0.0005
+NB_EPOCHS_SPATIAL = 55
+LEARNING_RATE_ALL = 0.0001
+NB_EPOCHS_ALL = 10
+BATCH_SIZE_SPATIAL = 32
+BATCH_SIZE_ALL = 16
 EARLY_STOPPING_THRESHOLD = 30
 MODEL_SAVE_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Code\test\ECM3401-Personal-Project\project\best_model.pth"
 

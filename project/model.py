@@ -221,6 +221,9 @@ class SpatioTemporalBlock(torch.nn.Module):
         temporal_context = self.temporal_context_projection(temporal_context) # projecting the temporal context to the same dimensions as x
 
         #---------------------Reshaping for temporal block----------------------------
+
+        x = torch.nn.functional.pad(x, (0, hp.FORECAST_WINDOW))
+
         # Adding an extra dimension so it is [batch_size*num_nodes, num_timesteps, 1]
         x = x.unsqueeze(-1)
 
