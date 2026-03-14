@@ -6,7 +6,7 @@ from torch_geometric.nn import GATConv
 from torch import nn, Tensor
 
 class GNN(torch.nn.Module):
-    def __init__ (self, input_channels, hidden_channels, output_channels, dropout = hp.GNN_DROPOUT, num_layers = 5, heads = 2):
+    def __init__ (self, input_channels, hidden_channels, output_channels, spatial_module_channels, dropout = hp.GNN_DROPOUT, num_layers = 5, heads = 2):
         super().__init__()
 
         """
@@ -21,17 +21,17 @@ class GNN(torch.nn.Module):
 
 
         self.layers = nn.ModuleList()
-        self.layers.append(GATConv(input_channels, hidden_channels, heads=heads, concat=True))
+        self.layers.append(GATConv(spatial_module_channels, spatial_module_channels, heads=heads, concat=True))
         for i in range(num_layers - 2 ):
-            self.layers.append(GATConv(hidden_channels * heads, hidden_channels, heads=heads, concat=True))
-        self.layers.append(GATConv(hidden_channels * heads, hidden_channels, heads=1, concat=False))
+            self.layers.append(GATConv(spatial_module_channels * heads, spatial_module_channels, heads=heads, concat=True))
+        self.layers.append(GATConv(spatial_module_channels * heads, spatial_module_channels, heads=1, concat=False))
 
         self.dropout = nn.Dropout(dropout)
-        self.residual_proj = nn.Linear(input_channels, hidden_channels * heads)
+        self.residual_proj = nn.Linear(spatial_module_channels, spatial_module_channels * heads)
 
         # decoder
-        self.fcn1 = nn.Linear(hidden_channels, hidden_channels)
-        self.fcn2 = nn.Linear(hidden_channels, output_channels)
+        self.fcn1 = nn.Linear(spatial_module_channels, spatial_module_channels)
+        self.fcn2 = nn.Linear(spatial_module_channels, spatial_module_channels)
 
     def forward(self, x, edge_index):
         """
@@ -169,13 +169,14 @@ class TemporalContextEmbedding(torch.nn.Module):
     
 
 class SpatioTemporalBlock(torch.nn.Module):
-    def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, context_dim):
+    def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, spatial_module_channels, spatial_dropout, spatial_num_layers, context_dim):
         super().__init__()
+
         self.context_window = context_window
         self.forecast_window = forecast_window
         self.total_window = self.context_window + self.forecast_window
 
-        self.spatialBlock = GNN(input_channels, hidden_channels, output_channels)
+        self.spatialBlock = GNN(input_channels, hidden_channels, output_channels, spatial_module_channels, spatial_dropout, spatial_num_layers)
 
         # Preprocessing layers
         self.input_embedding  = nn.Linear(1, embed_dim)
@@ -197,7 +198,7 @@ class SpatioTemporalBlock(torch.nn.Module):
 
 
 
-    def forward(self, x, edge_index, temporal_context, weather_context):
+    def forward(self, x, edge_index, temporal_context, weather_context, spatial_module_only = False):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
@@ -206,6 +207,12 @@ class SpatioTemporalBlock(torch.nn.Module):
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
+
+        #----------------------------Spatial block----------------------------
+        x = self.spatialBlock(x, edge_index)
+
+        if spatial_module_only:
+            return x
   
         #-----------------------Preparing contextual input----------------------
         weather_context = self.weather_projection(weather_context) # projecting the weather context to the same dimensions as x
@@ -213,10 +220,6 @@ class SpatioTemporalBlock(torch.nn.Module):
         temporal_context = self.temporal_context_embedding(temporal_context) # converting index numbers to embeddings
         temporal_context = self.temporal_context_projection(temporal_context) # projecting the temporal context to the same dimensions as x
 
-        #----------------------------Spatial block----------------------------
-        x = self.spatialBlock(x, edge_index)
-
-    
         #---------------------Reshaping for temporal block----------------------------
         # Adding an extra dimension so it is [batch_size*num_nodes, num_timesteps, 1]
         x = x.unsqueeze(-1)
@@ -295,13 +298,13 @@ class PredictionBlock(torch.nn.Module):
         return x
 
 class Model(torch.nn.Module):
-    def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, context_dim = hp.TEMPORAL_EMBEDDING_DIMENSIONS):
+    def __init__(self, input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, spatial_module_channels, spatial_dropout, spatial_num_layers, context_dim = hp.TEMPORAL_EMBEDDING_DIMENSIONS):
         super().__init__()
-        self.spatio_temporal1 = SpatioTemporalBlock(input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, context_dim)
+        self.spatio_temporal1 = SpatioTemporalBlock(input_channels, hidden_channels, output_channels, num_heads, embed_dim, context_window, forecast_window, spatial_module_channels, spatial_dropout, spatial_num_layers, context_dim)
         self.prediction = PredictionBlock(hidden_channels, output_channels)
         #self.num_st_iterations = num_st_iterations
 
-    def forward(self, x, edge_index, temporal_context, weather_context):
+    def forward(self, x, edge_index, temporal_context, weather_context, spatial_module_only = False):
         """
         Parameters:
             x (Tensor): The network nodes and features with shape [num_nodes, num_timesteps]
@@ -310,8 +313,12 @@ class Model(torch.nn.Module):
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        x = self.spatio_temporal1(x, edge_index, temporal_context, weather_context) # i can do this a more fancy way in the future, using nn.modulelist 
+        x = self.spatio_temporal1(x, edge_index, temporal_context, weather_context, spatial_module_only=spatial_module_only) # i can do this a more fancy way in the future, using nn.modulelist 
 
+        if spatial_module_only:
+            return x
+        
+        
         x = self.prediction(x)
         return x
     
