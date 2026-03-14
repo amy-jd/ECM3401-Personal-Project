@@ -1,5 +1,5 @@
 CONTEXT_WINDOW = 382 #4 days
-FORECAST_WINDOW = 0 #48 # 12 hours
+FORECAST_WINDOW = 48 # 12 hours
 TOTAL_WINDOW = CONTEXT_WINDOW + FORECAST_WINDOW # 4.5 days
 MAX_GAP = 16
 
@@ -20,7 +20,7 @@ TEMPORAL_EMBEDDING_DIMENSIONS = [6, 2, 4]
 
 LEARNING_RATE = 0.0005
 NB_EPOCHS = 55
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 EARLY_STOPPING_THRESHOLD = 30
 MODEL_SAVE_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Code\test\ECM3401-Personal-Project\project\best_model.pth"
 

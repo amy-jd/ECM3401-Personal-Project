@@ -240,18 +240,13 @@ def generate_masks(df, strata_df, model_type='normal', forecast_window=hp.FORECA
                 input_mask = np.ones(sample_length)
                 prediction_mask = np.ones(sample_length)
 
-                if model_type == 'normal':
-                    # Mask selected nodes (entire time series)
-                    if col_idx in masked_node_set:
-                        input_mask[:] = 0.0
-                        prediction_mask[-forecast_window:] = 0.0
-                    else:
-                        input_mask[-forecast_window:] = 0.0
+                # Mask selected nodes (entire time series)
+                if col_idx in masked_node_set:
+                    input_mask[:] = 0.0
+                    prediction_mask[-forecast_window:] = 0.0
+                else:
+                    input_mask[-forecast_window:] = 0.0
                         
-                elif model_type == 'gnn only':
-                    if col_idx in masked_node_set:
-                        input_mask[:] = 0.0
-
 
                 input_mask_entry[col] = input_mask
                 prediction_mask_entry[col] = prediction_mask
