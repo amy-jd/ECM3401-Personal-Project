@@ -5,15 +5,16 @@ from torch_geometric.nn import GCNConv
 from torch import nn, Tensor
 
 class GNN(torch.nn.Module):
-    def __init__ (self, input_channels, hidden_channels, output_channels, dropout = hp.GNN_DROPOUT):
+    def __init__ (self, input_channels, hidden_channels, output_channels, dropout = hp.GNN_DROPOUT, num_layers = 5):
         super().__init__()
-        self.conv1 = GCNConv(input_channels, hidden_channels)
-        self.conv2 = GCNConv(hidden_channels, hidden_channels)
-        self.conv3 = GCNConv(hidden_channels, hidden_channels)
-        self.conv4 = GCNConv(hidden_channels, output_channels)
+
+        self.layers = nn.ModuleList()
+        for i in range(num_layers):
+            self.layers.append(GCNConv(hidden_channels, hidden_channels))
+
 
         self.dropout = nn.Dropout(0)
- 
+
     def forward(self, x, edge_index):
         """
         Parameters:
@@ -23,19 +24,13 @@ class GNN(torch.nn.Module):
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        x = self.conv1(x, edge_index)
-        x = torch.relu(x) #
-        x = self.dropout(x)
 
-        x = self.conv2(x, edge_index)
-        x = torch.relu(x)
-        x = self.dropout(x)
+        for layer in self.layers[:-1]:
+            x = layer(x, edge_index)
+            x = torch.relu(x)
+            x = self.dropout(x)
 
-        x = self.conv3(x, edge_index)
-        x = torch.relu(x)
-        x = self.dropout(x)
-
-        x = self.conv4(x, edge_index)
+        x = self.layers[-1](x, edge_index)
         x = torch.relu(x)
 
         return x

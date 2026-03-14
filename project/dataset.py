@@ -34,6 +34,8 @@ class WaterFlowDataSet(Dataset):
         x = np.stack(row.values, axis=0)
         x = torch.tensor(x, dtype=torch.float)
 
+        #print(f"x before masking: {x}")
+
 
         if self.generate_masks:
             # Generating a mask, where future values and masked nodes are set to 0.
@@ -48,6 +50,8 @@ class WaterFlowDataSet(Dataset):
 
         # Apply the mask to the input data, so that masked positions are set to 0 and unmasked positions retain their original values
         x_masked = x * input_mask
+        #print(f"x_masked: {x_masked}")
+
         # Transforming the mask to be a boolean tensor, where masked positions (0) are True, and unmasked positions (1) are False
         boolean_mask = (input_mask == 0) 
         boolean_prediction_mask = (prediction_mask == 0)

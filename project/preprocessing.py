@@ -204,7 +204,7 @@ def strat_random_sampling(windows_df, strata_df):
 
     return windows_df_sampled, strata_df_sampled
 
-def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
+def generate_masks(df, strata_df, model_type='normal', forecast_window=hp.FORECAST_WINDOW):
 
     rows = []
     strata = []
@@ -240,12 +240,18 @@ def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
                 input_mask = np.ones(sample_length)
                 prediction_mask = np.ones(sample_length)
 
-                # Mask selected nodes (entire time series)
-                if col_idx in masked_node_set:
-                    input_mask[:] = 0.0
-                    prediction_mask[-forecast_window:] = 0.0
-                else:
-                    input_mask[-forecast_window:] = 0.0
+                if model_type == 'normal':
+                    # Mask selected nodes (entire time series)
+                    if col_idx in masked_node_set:
+                        input_mask[:] = 0.0
+                        prediction_mask[-forecast_window:] = 0.0
+                    else:
+                        input_mask[-forecast_window:] = 0.0
+                        
+                elif model_type == 'gnn only':
+                    if col_idx in masked_node_set:
+                        input_mask[:] = 0.0
+
 
                 input_mask_entry[col] = input_mask
                 prediction_mask_entry[col] = prediction_mask
@@ -263,7 +269,7 @@ def generate_masks(df, strata_df, forecast_window=hp.FORECAST_WINDOW):
     return rows_df, strata_df, input_masks_df, prediction_masks_df
 
 
-def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
+def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW, model_type='normal'):
 
     # Reading in the flow data file
     df_flowdata = pd.read_csv(path, index_col=0)
@@ -316,7 +322,7 @@ def preprocess_flowdata(path, window_size=hp.TOTAL_WINDOW):
         samples_df, samples_context_df = create_samples(df, context_df, window_size, set_name, overlap=overlap[i])
         sampled_df, sampled_context_df = strat_random_sampling(samples_df, samples_context_df)
 
-        expanded_flow_df, expanded_context_df, input_masks_df, prediction_masks_df,  = generate_masks(sampled_df, sampled_context_df)
+        expanded_flow_df, expanded_context_df, input_masks_df, prediction_masks_df,  = generate_masks(sampled_df, sampled_context_df, model_type=model_type)
 
         flow_datasets.append(expanded_flow_df)
         input_masks.append(input_masks_df)
