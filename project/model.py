@@ -2,10 +2,11 @@ import torch
 import math
 import hyperparameters as hp
 from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GATConv
 from torch import nn, Tensor
 
 class GNN(torch.nn.Module):
-    def __init__ (self, input_channels, hidden_channels, output_channels, dropout = hp.GNN_DROPOUT, num_layers = 5):
+    def __init__ (self, input_channels, hidden_channels, output_channels, dropout = hp.GNN_DROPOUT, num_layers = 5, heads = 2):
         super().__init__()
 
         """
@@ -18,14 +19,17 @@ class GNN(torch.nn.Module):
         )
         """
 
-        self.layers = nn.ModuleList()
-        self.layers.append(GCNConv(input_channels, hidden_channels))
-        for i in range(num_layers -1 ):
-            self.layers.append(GCNConv(hidden_channels, hidden_channels))
 
+        self.layers = nn.ModuleList()
+        self.layers.append(GATConv(input_channels, hidden_channels, heads=heads, concat=True))
+        for i in range(num_layers - 2 ):
+            self.layers.append(GATConv(hidden_channels * heads, hidden_channels, heads=heads, concat=True))
+        self.layers.append(GATConv(hidden_channels * heads, hidden_channels, heads=1, concat=False))
 
         self.dropout = nn.Dropout(dropout)
+        self.residual_proj = nn.Linear(input_channels, hidden_channels * heads)
 
+        # decoder
         self.fcn1 = nn.Linear(hidden_channels, hidden_channels)
         self.fcn2 = nn.Linear(hidden_channels, output_channels)
 
@@ -38,20 +42,15 @@ class GNN(torch.nn.Module):
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
-        x_orginal = x
-
-        #x = x.unsqueeze(1)           # [num_nodes, 1, num_timesteps]
-        #x = self.encoder(x)          # [num_nodes, hidden_dim, 1]
-        #x = x.squeeze(-1)
+        x_orginal = self.residual_proj(x)
 
         for layer in self.layers[:-1]:
             x = layer(x, edge_index)
-            x = x + x_orginal 
+            x = x + x_orginal
             x = torch.relu(x)
             x = self.dropout(x)
 
         x = self.layers[-1](x, edge_index)
-        #x = torch.relu(x)
 
         #-----decoder section ------------
         x = self.fcn1(x)
