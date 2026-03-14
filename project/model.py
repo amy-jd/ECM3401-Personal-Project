@@ -9,11 +9,12 @@ class GNN(torch.nn.Module):
         super().__init__()
 
         self.layers = nn.ModuleList()
-        for i in range(num_layers):
+        self.layers.append(GCNConv(input_channels, hidden_channels))
+        for i in range(num_layers -1 ):
             self.layers.append(GCNConv(hidden_channels, hidden_channels))
 
 
-        self.dropout = nn.Dropout(0)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, edge_index):
         """
@@ -24,14 +25,16 @@ class GNN(torch.nn.Module):
         Returns
             Tensor: The output embedding with shape [num_nodes, num_timesteps]
         """
+        x_orginal = x
 
         for layer in self.layers[:-1]:
             x = layer(x, edge_index)
+            x = x + x_orginal 
             x = torch.relu(x)
             x = self.dropout(x)
 
         x = self.layers[-1](x, edge_index)
-        x = torch.relu(x)
+        #x = torch.relu(x)
 
         return x
 
