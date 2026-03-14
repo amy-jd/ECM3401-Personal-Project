@@ -19,7 +19,7 @@ TEMPORAL_COLS = ['part_of_day', 'part_of_week', 'part_of_year']
 TEMPORAL_EMBEDDING_DIMENSIONS = [6, 2, 4]
 
 LEARNING_RATE = 0.0005
-NB_EPOCHS = 35
+NB_EPOCHS = 45
 BATCH_SIZE = 32
 EARLY_STOPPING_THRESHOLD = 30
 MODEL_SAVE_PATH = r"C:\Users\ameli\Documents\Uni\year-3-notes\diss\Code\test\ECM3401-Personal-Project\project\best_model.pth"
