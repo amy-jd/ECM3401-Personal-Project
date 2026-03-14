@@ -8,6 +8,16 @@ class GNN(torch.nn.Module):
     def __init__ (self, input_channels, hidden_channels, output_channels, dropout = hp.GNN_DROPOUT, num_layers = 5):
         super().__init__()
 
+        """
+        self.encoder = nn.Sequential(
+            nn.Conv1d(1, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(16, hidden_channels, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool1d(1)  # compress sequence dimension
+        )
+        """
+
         self.layers = nn.ModuleList()
         self.layers.append(GCNConv(input_channels, hidden_channels))
         for i in range(num_layers -1 ):
@@ -15,6 +25,9 @@ class GNN(torch.nn.Module):
 
 
         self.dropout = nn.Dropout(dropout)
+
+        self.fcn1 = nn.Linear(hidden_channels, hidden_channels)
+        self.fcn2 = nn.Linear(hidden_channels, output_channels)
 
     def forward(self, x, edge_index):
         """
@@ -27,6 +40,10 @@ class GNN(torch.nn.Module):
         """
         x_orginal = x
 
+        #x = x.unsqueeze(1)           # [num_nodes, 1, num_timesteps]
+        #x = self.encoder(x)          # [num_nodes, hidden_dim, 1]
+        #x = x.squeeze(-1)
+
         for layer in self.layers[:-1]:
             x = layer(x, edge_index)
             x = x + x_orginal 
@@ -35,6 +52,11 @@ class GNN(torch.nn.Module):
 
         x = self.layers[-1](x, edge_index)
         #x = torch.relu(x)
+
+        #-----decoder section ------------
+        x = self.fcn1(x)
+        x = torch.relu(x)
+        x = self.fcn2(x)
 
         return x
 
